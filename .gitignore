@@ -25,6 +25,7 @@ htmlcov/
 logs/
 *.log
 .langgraph_api/
+test.yaml
 
 # OS and editor files
 .DS_Store
