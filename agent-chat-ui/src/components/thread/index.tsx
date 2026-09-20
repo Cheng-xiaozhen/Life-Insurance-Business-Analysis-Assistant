@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { ReactNode, useEffect, useRef } from "react";
+import { Fragment, ReactNode, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useStreamContext } from "@/providers/Stream";
@@ -37,6 +37,8 @@ import {
   TooltipTrigger,
 } from "../ui/tooltip";
 import { AnalysisInterruptView } from "./analysis-interrupt";
+import { ExecutionPane } from "./execution-pane";
+import { ReportDownload } from "./report-download";
 import { getAnalysisInterrupt } from "@/lib/agent-inbox-interrupt";
 import {
   useArtifactOpen,
@@ -135,6 +137,7 @@ export function Thread() {
     (task) => task.error,
   )?.error;
   const hasRunError = !!stream.error || !!checkpointError;
+  const execution = Object.values(stream.values.execution ?? {});
   const hasPendingRun =
     !isLoading &&
     !stream.isThreadLoading &&
@@ -294,6 +297,39 @@ export function Thread() {
     });
   };
 
+  const recoveryControls = (hasRunError || hasPendingRun) && (
+    <div
+      role="alert"
+      className="rounded-lg border p-3"
+    >
+      <p>
+        {hasRunError
+          ? "后端执行失败。请检查模型连接或后端日志，修复后从失败步骤继续。"
+          : "分析尚未完成，可以从保存的步骤继续。"}
+      </p>
+      <Button
+        disabled={isLoading}
+        onClick={() => {
+          if (isLoading || submitting.current) return;
+          submitting.current = true;
+          void stream
+            .submit(null, {
+              streamMode: ["values", "custom"],
+              streamResumable: true,
+              multitaskStrategy: "reject",
+              checkpoint: null,
+            })
+            .catch(() => toast.error("重试失败，请检查后端连接。"))
+            .finally(() => {
+              submitting.current = false;
+            });
+        }}
+      >
+        {hasRunError ? "从失败处重试" : "继续分析"}
+      </Button>
+    </div>
+  );
+
   const chatStarted = !!threadId || !!messages.length;
   const hasNoAIOrToolMessages = !messages.find(
     (m) => m.type === "ai" || m.type === "tool",
@@ -447,18 +483,63 @@ export function Thread() {
                     .filter((m) => !m.id?.startsWith(DO_NOT_RENDER_ID_PREFIX))
                     .map((message, index) =>
                       message.type === "human" ? (
-                        <HumanMessage
+                        <Fragment
                           key={message.id || `${message.type}-${index}`}
-                          message={message}
-                          isLoading={isLoading}
-                        />
+                        >
+                          <HumanMessage
+                            message={message}
+                            isLoading={isLoading}
+                          />
+                          {(message.id === stream.values.analysis_id ||
+                            execution.some(
+                              (entry) => entry.analysis_id === message.id,
+                            )) && (
+                            <ExecutionPane
+                              entries={execution.filter(
+                                (entry) => entry.analysis_id === message.id,
+                              )}
+                              messages={messages}
+                              actions={
+                                message.id === stream.values.analysis_id
+                                  ? recoveryControls
+                                  : null
+                              }
+                              running={
+                                message.id === stream.values.analysis_id &&
+                                isLoading
+                              }
+                              status={
+                                message.id === stream.values.analysis_id
+                                  ? hasRunError && !isLoading
+                                    ? "分析失败，可从失败处重试"
+                                    : hasPendingRun
+                                      ? "已暂停，可继续分析"
+                                      : (stream.values.status ?? "准备分析")
+                                  : "已结束"
+                              }
+                            />
+                          )}
+                        </Fragment>
                       ) : (
-                        <AssistantMessage
+                        <Fragment
                           key={message.id || `${message.type}-${index}`}
-                          message={message}
-                          isLoading={isLoading}
-                          handleRegenerate={handleRegenerate}
-                        />
+                        >
+                          <AssistantMessage
+                            message={message}
+                            isLoading={isLoading}
+                            handleRegenerate={handleRegenerate}
+                          />
+                          {message.type === "ai" &&
+                            message.id?.endsWith(":charts") && (
+                              <ReportDownload
+                                messages={messages}
+                                analysisId={message.id.slice(
+                                  0,
+                                  -":charts".length,
+                                )}
+                              />
+                            )}
+                        </Fragment>
                       ),
                     )}
                   {/* Special rendering case where there are no AI/tool messages, but there is an interrupt.
@@ -471,62 +552,36 @@ export function Thread() {
                       handleRegenerate={handleRegenerate}
                     />
                   )}
-                  {isLoading && !firstTokenReceived && (
-                    <AssistantMessageLoading />
-                  )}
+                  {isLoading &&
+                    !firstTokenReceived &&
+                    !stream.values.analysis_id && <AssistantMessageLoading />}
                   {analysisInterrupt && (
                     <AnalysisInterruptView
                       interrupt={analysisInterrupt}
+                      lastMessage={messages[messages.length - 1]}
                       disabled={isLoading}
                       onReply={(reply) => {
                         void resumeAnalysis(reply);
                       }}
                     />
                   )}
-                  {stream.values.status && (
+                  {stream.values.status && !stream.values.analysis_id && (
                     <p
                       role="status"
-                      className="text-muted-foreground text-sm"
+                      className="text-muted-foreground flex items-center gap-2 text-sm"
                     >
+                      {isLoading && (
+                        <LoaderCircle
+                          aria-hidden="true"
+                          className="size-4 animate-spin motion-reduce:animate-none"
+                        />
+                      )}
                       {hasRunError && !isLoading
                         ? "分析失败，已完成的步骤已保留。"
                         : stream.values.status}
                     </p>
                   )}
-                  {(hasRunError || hasPendingRun) && (
-                    <div
-                      role="alert"
-                      className="rounded-lg border p-3"
-                    >
-                      <p>
-                        {hasRunError
-                          ? "后端执行失败。请检查模型连接或后端日志，修复后从失败步骤继续。"
-                          : "分析尚未完成，可以从保存的步骤继续。"}
-                      </p>
-                      <Button
-                        disabled={isLoading}
-                        onClick={() => {
-                          if (isLoading || submitting.current) return;
-                          submitting.current = true;
-                          void stream
-                            .submit(null, {
-                              streamMode: ["values", "custom"],
-                              streamResumable: true,
-                              multitaskStrategy: "reject",
-                              checkpoint: null,
-                            })
-                            .catch(() =>
-                              toast.error("重试失败，请检查后端连接。"),
-                            )
-                            .finally(() => {
-                              submitting.current = false;
-                            });
-                        }}
-                      >
-                        {hasRunError ? "从失败处重试" : "继续分析"}
-                      </Button>
-                    </div>
-                  )}
+                  {!stream.values.analysis_id && recoveryControls}
                 </>
               }
               footer={

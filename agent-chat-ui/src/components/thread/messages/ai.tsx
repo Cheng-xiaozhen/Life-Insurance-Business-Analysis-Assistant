@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { ToolCalls, ToolResult } from "./tool-calls";
 import { MessageContentComplex } from "@langchain/core/messages";
 import { Fragment } from "react/jsx-runtime";
+import { useDeferredValue } from "react";
 import { isAgentInboxInterruptSchema } from "@/lib/agent-inbox-interrupt";
 import { ThreadView } from "../agent-inbox";
 import { useQueryState, parseAsBoolean } from "nuqs";
@@ -113,6 +114,7 @@ export function AssistantMessage({
 }) {
   const content = message?.content ?? [];
   const contentString = getContentString(content);
+  const deferredContent = useDeferredValue(contentString);
   const [hideToolCalls] = useQueryState(
     "hideToolCalls",
     parseAsBoolean.withDefault(false),
@@ -148,6 +150,13 @@ export function AssistantMessage({
   if (isToolResult && hideToolCalls) {
     return null;
   }
+  // 标题占位属于执行进度；正文首个片段到达后才开始展示报告章节。
+  if (
+    message?.additional_kwargs?.pending === true &&
+    /^### [^\n]+\n\n$/.test(contentString)
+  ) {
+    return null;
+  }
 
   return (
     <div className="group mr-auto flex w-full items-start gap-2">
@@ -165,7 +174,7 @@ export function AssistantMessage({
           <>
             {contentString.length > 0 && (
               <div className="py-1">
-                <MarkdownText>{contentString}</MarkdownText>
+                <MarkdownText>{deferredContent}</MarkdownText>
               </div>
             )}
             {message?.additional_kwargs?.pending === true && !isLoading && (

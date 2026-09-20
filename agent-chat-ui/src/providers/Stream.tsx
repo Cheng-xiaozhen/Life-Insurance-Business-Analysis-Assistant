@@ -25,6 +25,7 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { getApiKey } from "@/lib/api-key";
 import { useThreads } from "./Thread";
 import { toast } from "sonner";
+import type { ExecutionEntry } from "@/components/thread/execution-pane";
 
 export type StateType = {
   messages: Message[];
@@ -32,12 +33,15 @@ export type StateType = {
   question?: string | null;
   status?: string;
   analysis_id?: string;
+  execution?: Record<string, ExecutionEntry>;
 };
 
 type AnalysisDelta = {
   type: "analysis_delta";
   id: string;
+  analysis_id?: string;
   text: string;
+  reasoning?: string;
   start?: boolean;
   status?: string;
 };
@@ -51,7 +55,11 @@ const useTypedStream = useStream<
       context?: Record<string, unknown>;
       question?: string | null;
     };
-    CustomEventType: UIMessage | RemoveUIMessage | AnalysisDelta;
+    CustomEventType:
+      | UIMessage
+      | RemoveUIMessage
+      | AnalysisDelta
+      | { type: "analysis_progress"; entry: ExecutionEntry };
   }
 >;
 
@@ -110,7 +118,16 @@ const StreamSession = ({
     threadId: threadId ?? null,
     fetchStateHistory: true,
     reconnectOnMount: true,
+    // SDK 的数字 throttle 实际采用防抖；连续流使用零延迟批处理，避免等到流结束才刷新。
+    throttle: true,
     onCustomEvent: (event, options) => {
+      if (event.type === "analysis_progress") {
+        options.mutate((prev) => ({
+          ...prev,
+          execution: { ...prev.execution, [event.entry.id]: event.entry },
+        }));
+        return;
+      }
       if (event.type === "analysis_delta") {
         options.mutate((prev) => {
           const messages = [...(prev.messages ?? [])];
@@ -124,7 +141,17 @@ const StreamSession = ({
             content:
               (event.start ? "" : ((previous?.content as string) ?? "")) +
               event.text,
-            additional_kwargs: { analysis: true, pending: true },
+            additional_kwargs: {
+              analysis: true,
+              analysis_id:
+                event.analysis_id ?? previous?.additional_kwargs?.analysis_id,
+              pending: true,
+              reasoning:
+                (event.start
+                  ? ""
+                  : ((previous?.additional_kwargs?.reasoning as string) ??
+                    "")) + (event.reasoning ?? ""),
+            },
           };
           if (index >= 0) messages[index] = message;
           else messages.push(message);

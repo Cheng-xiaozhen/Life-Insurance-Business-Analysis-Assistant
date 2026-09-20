@@ -51,6 +51,7 @@ def summarize_scenario(state: AgentState, config: RunnableConfig) -> SummarizeSc
         raise RuntimeError("总结模型未返回有效文本")
     update = SummarizeScenarioUpdate(summary=summary)
     if state.get("analysis_id"):
-        update.update(messages=[chat_message(state, "summary", f"### 场景总结\n\n{summary}")],
+        update.update(messages=[chat_message(state, "summary", f"### 场景总结\n\n{summary}",
+                                            reasoning=message.additional_kwargs.get("analysis_reasoning", ""))],
                       status="正在生成图表推荐")
     return update

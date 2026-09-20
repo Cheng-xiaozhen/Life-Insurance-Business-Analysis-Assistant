@@ -65,6 +65,9 @@ def test_chat():
         assert "q1:step:1" in [message.id for message in paused.values["messages"]]
         assert "q1:step:2" not in [message.id for message in paused.values["messages"]]
         assert any(kind == "custom" and data.get("text") == "尚未完成" for kind, data in events)
+        progress = [data["entry"] for kind, data in events if kind == "custom" and data.get("type") == "analysis_progress"]
+        assert any(entry["state"] == "error" and "步骤 2" in entry["label"] for entry in progress)
+        assert any("已识别场景：" in entry["label"] for entry in progress)
         # 以空输入恢复失败检查点，不重新执行已完成步骤或重复取数。
         resumed = list(graph.stream(None, config, stream_mode=["custom", "values", "messages"]))
         result = graph.get_state(config).values
@@ -72,6 +75,11 @@ def test_chat():
         assert query.call_count == len(result["template"]["steps"])
         assert len(result["messages"]) == len(result["template"]["steps"]) + 3
         assert len({message.id for message in result["messages"]}) == len(result["messages"])
+        saved_process = result["execution"]
+        assert all(entry["state"] == "done" for entry in saved_process.values())
+        for step in result["template"]["steps"]:
+            assert any(f"查询数据 · 步骤 {step['step_id']}：" in entry["label"] for entry in saved_process.values())
+            assert sum(entry.get("message_id") == f"q1:step:{step['step_id']}" for entry in saved_process.values()) == 1
         assert any(kind == "custom" and data.get("id") == "q1:step:2" and data.get("start") for kind, data in resumed)
         # 聊天流与检查点文本逐字一致，失败尝试的半成品未写入业务状态。
         streamed = {}
@@ -90,6 +98,8 @@ def test_chat():
         assert second["question"] == "人力" and second["analysis_id"] == "q2"
         assert second["slots"] == {} and second["step_results"] == [] and second["summary"] is None
         assert len(second["messages"]) == before + 2
+        assert all(second["execution"][key] == value for key, value in saved_process.items())
+        assert any(entry["analysis_id"] == "q2" for entry in second["execution"].values())
         third = graph.invoke({"question": "人员情况"}, config)
         assert third["question"] == "人员情况" and third["status"] == "已完成"
         for i, invalid in enumerate([

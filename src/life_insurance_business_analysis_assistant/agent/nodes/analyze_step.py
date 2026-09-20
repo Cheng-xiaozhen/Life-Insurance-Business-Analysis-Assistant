@@ -54,6 +54,7 @@ def analyze_step(state: AgentState, config: RunnableConfig) -> AnalyzeStepUpdate
         step_results=[*state["step_results"], result], step_index=index + 1, current_data=None,
     )
     if state.get("analysis_id"):
-        update.update(messages=[chat_message(state, f"step:{step['step_id']}", f"### {heading}\n\n{conclusion}")],
+        update.update(messages=[chat_message(state, f"step:{step['step_id']}", f"### {heading}\n\n{conclusion}",
+                                            reasoning=message.additional_kwargs.get("analysis_reasoning", ""))],
                       status="正在执行下一分析阶段")
     return update

@@ -1,7 +1,7 @@
 {
   "dependencies": ["."],
   "graphs": {
-    "insurance_analysis": "./src/life_insurance_business_analysis_assistant/agent/studio.py:graph"
+    "agent": "./src/life_insurance_business_analysis_assistant/agent/studio.py:graph"
   },
   "env": ".env"
 }

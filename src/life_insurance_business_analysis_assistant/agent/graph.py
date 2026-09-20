@@ -17,7 +17,7 @@ from life_insurance_business_analysis_assistant.agent.nodes.summarize_scenario i
 from life_insurance_business_analysis_assistant.agent.nodes.recommend_charts import recommend_charts
 from life_insurance_business_analysis_assistant.agent.state import AgentState
 from life_insurance_business_analysis_assistant.agent.chat import (
-    ChatState, StudioInput, chart_message, no_match, prepare_chat, present_clarification,
+    ChatState, StudioInput, chart_message, no_match, prepare_chat, present_clarification, track_execution,
 )
 
 
@@ -47,28 +47,32 @@ def route_analysis(state: AgentState) -> Literal["fetch_step_data", "complete"]:
 
 
 def build_graph(*, studio_context: AgentContext | None = None):
-    """创建 POC 图；调用方复用此实例，并用相同 thread_id 恢复暂停。"""
+    """
+    创建分析图
+    studio_context 是一个可选的运行上下文，根据是否提供该参数，函数支持两种构建方式：
+    1. 不提供 studio_context：创建一个普通分析图，不支持聊天能力。
+    2. 提供 studio_context：创建一个支持聊天能力的分析图
+
+    """
     graph = StateGraph(ChatState if studio_context is not None else AgentState, context_schema=AgentContext if studio_context is None else None,
                        input_schema=StudioInput if studio_context is not None else AgentState)
-    def start_studio(state: AgentState):
-        return match_scenario(state, Runtime(context=studio_context))
-
-    graph.add_node("match_scenario", match_scenario if studio_context is None else start_studio)
     node_state = ChatState if studio_context is not None else AgentState
-    graph.add_node("clarify", clarify, input_schema=node_state)
-    graph.add_node("load_template", load_template if studio_context is None else
-                   lambda state: load_template(state, Runtime(context=studio_context)))
-    graph.add_node("resolve_slots", resolve_slots, input_schema=node_state)
-    graph.add_node("fetch_step_data", fetch_step_data if studio_context is None else
-                   lambda state: fetch_step_data(state, Runtime(context=studio_context)))
-    graph.add_node("analyze_step", analyze_step, input_schema=node_state)
-    graph.add_node("summarize_scenario", summarize_scenario, input_schema=node_state)
-    graph.add_node("recommend_charts", recommend_charts, input_schema=node_state)
+    for name, node in (("match_scenario", match_scenario), ("load_template", load_template),
+                       ("fetch_step_data", fetch_step_data)):
+        graph.add_node(name, node if studio_context is None else track_execution(
+            name, lambda state, config, node=node: node(state, Runtime(context=studio_context))), input_schema=node_state)
+    graph.add_node("resolve_slots", resolve_slots if studio_context is None else track_execution(
+        "resolve_slots", lambda state, config: resolve_slots(state)), input_schema=node_state)
+    for name, node in (("analyze_step", analyze_step),
+                       ("summarize_scenario", summarize_scenario), ("recommend_charts", recommend_charts)):
+        graph.add_node(name, node if studio_context is None else track_execution(name, node), input_schema=node_state)
+    graph.add_node("clarify", clarify if studio_context is None else track_execution(
+        "clarify", lambda state, config: clarify(state)), input_schema=node_state)
     if studio_context is not None:
         graph.add_node("prepare_chat", prepare_chat)
-        graph.add_node("present_clarification", present_clarification)
-        graph.add_node("no_match", no_match)
-        graph.add_node("present_charts", chart_message)
+        for name, node in (("present_clarification", present_clarification), ("no_match", no_match),
+                           ("present_charts", chart_message)):
+            graph.add_node(name, track_execution(name, lambda state, config, node=node: node(state)))
         graph.add_edge(START, "prepare_chat")
         graph.add_edge("prepare_chat", "match_scenario")
         graph.add_edge("present_clarification", "clarify")

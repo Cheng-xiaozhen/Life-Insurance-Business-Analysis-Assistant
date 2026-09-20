@@ -1,13 +1,16 @@
 import { Button } from "@/components/ui/button";
+import type { Message } from "@langchain/langgraph-sdk";
 
 import type { AnalysisInterrupt } from "@/lib/agent-inbox-interrupt";
 
 export function AnalysisInterruptView({
   interrupt,
+  lastMessage,
   disabled,
   onReply,
 }: {
   interrupt: AnalysisInterrupt;
+  lastMessage?: Message;
   disabled: boolean;
   onReply: (reply: string) => void;
 }) {
@@ -16,7 +19,11 @@ export function AnalysisInterruptView({
       className="rounded-lg border p-4"
       aria-label="分析追问"
     >
-      <p>{interrupt.value.prompt}</p>
+      {/* 追问已保存为聊天消息时，卡片只显示补参操作。 */}
+      {!(
+        lastMessage?.type === "ai" &&
+        lastMessage.content === interrupt.value.prompt
+      ) && <p>{interrupt.value.prompt}</p>}
       {interrupt.value.kind === "scenario_selection" ? (
         <div className="mt-3 flex flex-wrap gap-2">
           {interrupt.value.candidates?.map((candidate) => (

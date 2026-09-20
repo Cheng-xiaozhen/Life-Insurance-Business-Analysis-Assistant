@@ -9,6 +9,7 @@ from langgraph.constants import TAG_NOSTREAM
 from pydantic import BaseModel, ConfigDict
 
 from life_insurance_business_analysis_assistant.agent.llm import get_llm
+from life_insurance_business_analysis_assistant.agent.chat import AnalysisStream, chat_message
 from life_insurance_business_analysis_assistant.agent.state import AgentState, ChartRecommendation
 from life_insurance_business_analysis_assistant.prompt_loader import load_prompt
 
@@ -62,10 +63,16 @@ def recommend_charts(state: AgentState, config: RunnableConfig) -> RecommendChar
     llm = get_llm(thinking=True)
     if llm is None:
         raise RuntimeError("图表推荐模型未配置，请设置 DEEPSEEK_API_KEY")
-    raw = llm.with_structured_output(ChartDecision, method="json_mode").invoke([
-        ("system", load_prompt("recommend_charts") + json.dumps(ChartDecision.model_json_schema(), ensure_ascii=False)),
-        ("human", json.dumps(payload, ensure_ascii=False)),
-    ], config=merge_configs(config, {"tags": [TAG_NOSTREAM]}))
+    progress = AnalysisStream(state, "charts", "图表推荐", protocol=False) if state.get("analysis_id") else None
+    try:
+        raw = llm.with_structured_output(ChartDecision, method="json_mode").invoke([
+            ("system", load_prompt("recommend_charts") + json.dumps(ChartDecision.model_json_schema(), ensure_ascii=False)),
+            ("human", json.dumps(payload, ensure_ascii=False)),
+        ], config=merge_configs(config, {"tags": [TAG_NOSTREAM], "callbacks": [progress] if progress else []}),
+            **({"stream": True} if progress else {}))
+    finally:
+        if progress:
+            progress.flush()
     decision = ChartDecision.model_validate(raw)
     if decision.step_id != step["step_id"]:
         raise ValueError("图表只能引用首步数据")
@@ -89,4 +96,8 @@ def recommend_charts(state: AgentState, config: RunnableConfig) -> RecommendChar
         step_id=decision.step_id, dimensions=decision.dimensions, metrics=decision.metrics,
         reason=decision.reason, description=decision.description,
     )
-    return RecommendChartsUpdate(chart_recommendations=[recommendation])
+    update = RecommendChartsUpdate(chart_recommendations=[recommendation])
+    if progress:
+        update.update(messages=[chat_message(state, "charts", "### 图表推荐\n\n",
+                                            reasoning="".join(progress.reasoning))])
+    return update
