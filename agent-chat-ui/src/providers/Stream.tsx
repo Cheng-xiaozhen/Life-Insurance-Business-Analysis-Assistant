@@ -26,7 +26,21 @@ import { getApiKey } from "@/lib/api-key";
 import { useThreads } from "./Thread";
 import { toast } from "sonner";
 
-export type StateType = { messages: Message[]; ui?: UIMessage[] };
+export type StateType = {
+  messages: Message[];
+  ui?: UIMessage[];
+  question?: string | null;
+  status?: string;
+  analysis_id?: string;
+};
+
+type AnalysisDelta = {
+  type: "analysis_delta";
+  id: string;
+  text: string;
+  start?: boolean;
+  status?: string;
+};
 
 const useTypedStream = useStream<
   StateType,
@@ -35,8 +49,9 @@ const useTypedStream = useStream<
       messages?: Message[] | Message | string;
       ui?: (UIMessage | RemoveUIMessage)[] | UIMessage | RemoveUIMessage;
       context?: Record<string, unknown>;
+      question?: string | null;
     };
-    CustomEventType: UIMessage | RemoveUIMessage;
+    CustomEventType: UIMessage | RemoveUIMessage | AnalysisDelta;
   }
 >;
 
@@ -94,7 +109,29 @@ const StreamSession = ({
     }),
     threadId: threadId ?? null,
     fetchStateHistory: true,
+    reconnectOnMount: true,
     onCustomEvent: (event, options) => {
+      if (event.type === "analysis_delta") {
+        options.mutate((prev) => {
+          const messages = [...(prev.messages ?? [])];
+          const index = messages.findIndex(
+            (message) => message.id === event.id,
+          );
+          const previous = index >= 0 ? messages[index] : undefined;
+          const message: Message = {
+            type: "ai",
+            id: event.id,
+            content:
+              (event.start ? "" : ((previous?.content as string) ?? "")) +
+              event.text,
+            additional_kwargs: { analysis: true, pending: true },
+          };
+          if (index >= 0) messages[index] = message;
+          else messages.push(message);
+          return { ...prev, messages, status: event.status ?? prev.status };
+        });
+        return;
+      }
       if (isUIMessage(event) || isRemoveUIMessage(event)) {
         options.mutate((prev) => {
           const ui = uiMessageReducer(prev.ui ?? [], event);

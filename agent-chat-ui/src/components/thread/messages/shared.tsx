@@ -12,6 +12,7 @@ import { TooltipIconButton } from "../tooltip-icon-button";
 import { AnimatePresence, motion } from "framer-motion";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useStreamContext } from "@/providers/Stream";
 
 function ContentCopyable({
   content,
@@ -134,6 +135,7 @@ export function CommandBar({
   handleRegenerate?: () => void;
   isLoading: boolean;
 }) {
+  const { values } = useStreamContext();
   if (isHumanMessage && isAiMessage) {
     throw new Error(
       "Can only set one of isHumanMessage or isAiMessage to true, not both.",
@@ -158,6 +160,7 @@ export function CommandBar({
   }
 
   const showEdit =
+    !values.analysis_id &&
     isHumanMessage &&
     isEditing !== undefined &&
     !!setIsEditing &&
@@ -194,7 +197,7 @@ export function CommandBar({
         content={content}
         disabled={isLoading}
       />
-      {isAiMessage && !!handleRegenerate && (
+      {!values.analysis_id && isAiMessage && !!handleRegenerate && (
         <TooltipIconButton
           disabled={isLoading}
           tooltip="Refresh"

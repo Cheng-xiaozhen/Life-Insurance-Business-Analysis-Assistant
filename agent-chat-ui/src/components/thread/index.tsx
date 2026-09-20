@@ -21,7 +21,6 @@ import {
   PanelRightClose,
   SquarePen,
   XIcon,
-  Plus,
 } from "lucide-react";
 import { useQueryState, parseAsBoolean } from "nuqs";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
@@ -37,8 +36,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "../ui/tooltip";
-import { useFileUpload } from "@/hooks/use-file-upload";
-import { ContentBlocksPreview } from "./ContentBlocksPreview";
+import { AnalysisInterruptView } from "./analysis-interrupt";
+import { getAnalysisInterrupt } from "@/lib/agent-inbox-interrupt";
 import {
   useArtifactOpen,
   ArtifactContent,
@@ -125,22 +124,45 @@ export function Thread() {
     parseAsBoolean.withDefault(false),
   );
   const [input, setInput] = useState("");
-  const {
-    contentBlocks,
-    setContentBlocks,
-    handleFileUpload,
-    dropRef,
-    removeBlock,
-    resetBlocks: _resetBlocks,
-    dragOver,
-    handlePaste,
-  } = useFileUpload();
   const [firstTokenReceived, setFirstTokenReceived] = useState(false);
   const isLargeScreen = useMediaQuery("(min-width: 1024px)");
 
   const stream = useStreamContext();
   const messages = stream.messages;
   const isLoading = stream.isLoading;
+  const analysisInterrupt = getAnalysisInterrupt(stream.interrupt);
+  const checkpointError = stream.history[0]?.tasks.find(
+    (task) => task.error,
+  )?.error;
+  const hasRunError = !!stream.error || !!checkpointError;
+  const hasPendingRun =
+    !isLoading &&
+    !stream.isThreadLoading &&
+    !analysisInterrupt &&
+    !!stream.values.analysis_id &&
+    stream.values.status !== "已完成" &&
+    !!stream.history[0]?.next.length;
+  const submitting = useRef(false);
+
+  const resumeAnalysis = async (reply: string) => {
+    if (!analysisInterrupt || isLoading || submitting.current || !reply.trim())
+      return;
+    submitting.current = true;
+    setFirstTokenReceived(false);
+    try {
+      await stream.submit(undefined, {
+        command: { resume: { [analysisInterrupt.id]: reply.trim() } },
+        checkpoint: null,
+        streamMode: ["values", "custom"],
+        streamResumable: true,
+        multitaskStrategy: "reject",
+      });
+    } catch {
+      toast.error("恢复分析失败，请检查后端连接后重试。");
+    } finally {
+      submitting.current = false;
+    }
+  };
 
   const lastError = useRef<string | undefined>(undefined);
 
@@ -196,8 +218,20 @@ export function Thread() {
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    if ((input.trim().length === 0 && contentBlocks.length === 0) || isLoading)
+    if (
+      !input.trim() ||
+      isLoading ||
+      submitting.current ||
+      hasRunError ||
+      hasPendingRun
+    )
       return;
+    if (analysisInterrupt) {
+      if (analysisInterrupt.value.kind === "scenario_selection") return;
+      void resumeAnalysis(input);
+      setInput("");
+      return;
+    }
     setFirstTokenReceived(false);
 
     const newHumanMessage: Message = {
@@ -205,7 +239,6 @@ export function Thread() {
       type: "human",
       content: [
         ...(input.trim().length > 0 ? [{ type: "text", text: input }] : []),
-        ...contentBlocks,
       ] as Message["content"],
     };
 
@@ -214,26 +247,37 @@ export function Thread() {
     const context =
       Object.keys(artifactContext).length > 0 ? artifactContext : undefined;
 
-    stream.submit(
-      { messages: [...toolMessages, newHumanMessage], context },
-      {
-        streamMode: ["values"],
-        streamSubgraphs: true,
-        streamResumable: true,
-        optimisticValues: (prev) => ({
-          ...prev,
+    submitting.current = true;
+    void stream
+      .submit(
+        {
+          messages: [...toolMessages, newHumanMessage],
           context,
-          messages: [
-            ...(prev.messages ?? []),
-            ...toolMessages,
-            newHumanMessage,
-          ],
-        }),
-      },
-    );
+          question: null,
+        },
+        {
+          streamMode: ["values", "custom"],
+          streamSubgraphs: true,
+          streamResumable: true,
+          multitaskStrategy: "reject",
+          checkpoint: null,
+          optimisticValues: (prev) => ({
+            ...prev,
+            context,
+            messages: [
+              ...(prev.messages ?? []),
+              ...toolMessages,
+              newHumanMessage,
+            ],
+          }),
+        },
+      )
+      .catch(() => toast.error("提交失败，请检查后端连接。"))
+      .finally(() => {
+        submitting.current = false;
+      });
 
     setInput("");
-    setContentBlocks([]);
   };
 
   const handleRegenerate = (
@@ -430,6 +474,59 @@ export function Thread() {
                   {isLoading && !firstTokenReceived && (
                     <AssistantMessageLoading />
                   )}
+                  {analysisInterrupt && (
+                    <AnalysisInterruptView
+                      interrupt={analysisInterrupt}
+                      disabled={isLoading}
+                      onReply={(reply) => {
+                        void resumeAnalysis(reply);
+                      }}
+                    />
+                  )}
+                  {stream.values.status && (
+                    <p
+                      role="status"
+                      className="text-muted-foreground text-sm"
+                    >
+                      {hasRunError && !isLoading
+                        ? "分析失败，已完成的步骤已保留。"
+                        : stream.values.status}
+                    </p>
+                  )}
+                  {(hasRunError || hasPendingRun) && (
+                    <div
+                      role="alert"
+                      className="rounded-lg border p-3"
+                    >
+                      <p>
+                        {hasRunError
+                          ? "后端执行失败。请检查模型连接或后端日志，修复后从失败步骤继续。"
+                          : "分析尚未完成，可以从保存的步骤继续。"}
+                      </p>
+                      <Button
+                        disabled={isLoading}
+                        onClick={() => {
+                          if (isLoading || submitting.current) return;
+                          submitting.current = true;
+                          void stream
+                            .submit(null, {
+                              streamMode: ["values", "custom"],
+                              streamResumable: true,
+                              multitaskStrategy: "reject",
+                              checkpoint: null,
+                            })
+                            .catch(() =>
+                              toast.error("重试失败，请检查后端连接。"),
+                            )
+                            .finally(() => {
+                              submitting.current = false;
+                            });
+                        }}
+                      >
+                        {hasRunError ? "从失败处重试" : "继续分析"}
+                      </Button>
+                    </div>
+                  )}
                 </>
               }
               footer={
@@ -445,27 +542,14 @@ export function Thread() {
 
                   <ScrollToBottom className="animate-in fade-in-0 zoom-in-95 absolute bottom-full left-1/2 mb-4 -translate-x-1/2" />
 
-                  <div
-                    ref={dropRef}
-                    className={cn(
-                      "bg-muted relative z-10 mx-auto mb-8 w-full max-w-3xl rounded-2xl shadow-xs transition-all",
-                      dragOver
-                        ? "border-primary border-2 border-dotted"
-                        : "border border-solid",
-                    )}
-                  >
+                  <div className="bg-muted relative z-10 mx-auto mb-8 w-full max-w-3xl rounded-2xl border border-solid shadow-xs transition-all">
                     <form
                       onSubmit={handleSubmit}
                       className="mx-auto grid max-w-3xl grid-rows-[1fr_auto] gap-2"
                     >
-                      <ContentBlocksPreview
-                        blocks={contentBlocks}
-                        onRemove={removeBlock}
-                      />
                       <textarea
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        onPaste={handlePaste}
                         onKeyDown={(e) => {
                           if (
                             e.key === "Enter" &&
@@ -479,7 +563,18 @@ export function Thread() {
                             form?.requestSubmit();
                           }
                         }}
-                        placeholder="Type your message..."
+                        disabled={
+                          isLoading ||
+                          hasRunError ||
+                          hasPendingRun ||
+                          analysisInterrupt?.value.kind === "scenario_selection"
+                        }
+                        aria-label="分析问题或补充参数"
+                        placeholder={
+                          analysisInterrupt
+                            ? "请输入需要补充的参数，例如：2026年8月"
+                            : "请输入完整分析问题（每次新问题独立分析）"
+                        }
                         className="field-sizing-content resize-none border-none bg-transparent p-3.5 pb-0 shadow-none ring-0 outline-none focus:ring-0 focus:outline-none"
                       />
 
@@ -499,26 +594,10 @@ export function Thread() {
                             </Label>
                           </div>
                         </div>
-                        <Label
-                          htmlFor="file-input"
-                          className="flex cursor-pointer items-center gap-2"
-                        >
-                          <Plus className="size-5 text-gray-600" />
-                          <span className="text-sm text-gray-600">
-                            Upload PDF or Image
-                          </span>
-                        </Label>
-                        <input
-                          id="file-input"
-                          type="file"
-                          onChange={handleFileUpload}
-                          multiple
-                          accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
-                          className="hidden"
-                        />
                         {stream.isLoading ? (
                           <Button
                             key="stop"
+                            type="button"
                             onClick={() => stream.stop()}
                             className="ml-auto"
                           >
@@ -531,7 +610,11 @@ export function Thread() {
                             className="ml-auto shadow-md transition-all"
                             disabled={
                               isLoading ||
-                              (!input.trim() && contentBlocks.length === 0)
+                              hasRunError ||
+                              hasPendingRun ||
+                              analysisInterrupt?.value.kind ===
+                                "scenario_selection" ||
+                              !input.trim()
                             }
                           >
                             Send

@@ -5,6 +5,7 @@ import logging
 from typing import Any, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
+from langgraph.constants import TAG_NOSTREAM
 
 from life_insurance_business_analysis_assistant.agent.llm import get_llm
 from life_insurance_business_analysis_assistant.agent.state import (
@@ -49,7 +50,7 @@ def resolve_slots(state: AgentState) -> ResolveSlotsUpdate:
     try:
         raw = llm.with_structured_output(SlotExtraction, method="function_calling").invoke([
             ("system", load_prompt("resolve_slots")), ("human", json.dumps(payload, ensure_ascii=False)),
-        ]) # 调用模型抽取槽位，必须返回符合 SlotExtraction 的结构
+        ], config={"tags": [TAG_NOSTREAM]}) # 内部结构化结果不作为聊天文本输出。
     except Exception:
         logger.exception("resolve_slots 模型调用失败（包含底层异常链）")
         raise

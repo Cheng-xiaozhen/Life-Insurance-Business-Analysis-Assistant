@@ -7,6 +7,7 @@ from typing import TypedDict
 from langchain_core.runnables import RunnableConfig
 
 from life_insurance_business_analysis_assistant.agent.llm import get_llm
+from life_insurance_business_analysis_assistant.agent.chat import chat_message, stream_text
 from life_insurance_business_analysis_assistant.agent.state import AgentState, StepResult
 from life_insurance_business_analysis_assistant.prompt_loader import load_prompt
 
@@ -38,22 +39,21 @@ def analyze_step(state: AgentState, config: RunnableConfig) -> AnalyzeStepUpdate
                  "analysis_mode": step.get("analysis_mode"), "metrics": step["metrics"]},
         "slots": state["slots"], "current_data": data,
     }
-    parts: list[str] = []
-    # 传递图的 callbacks，调用方可通过 stream_events(version="v3").messages 消费。
-    stream = llm.stream_events([
+    heading = f"步骤 {step['step_id']}：{step['text']}"
+    conclusion, message = stream_text(llm, [
         ("system", load_prompt("analyze_step")), ("human", json.dumps(payload, ensure_ascii=False)),
-    ], config=config, version="v3")
-    for text in stream.text:
-        parts.append(text)
-    message = stream.output
+    ], config, state, f"step:{step['step_id']}", heading)
     if message.tool_calls:
         raise RuntimeError("分析步骤不允许调用工具")
     if message.response_metadata.get("finish_reason") in ("length", "content_filter"):
         raise RuntimeError("分析结论未完整生成")
-    conclusion = "".join(parts).strip()
     if not conclusion:
         raise RuntimeError("分析模型未返回有效结论")
     result = StepResult(step_id=step["step_id"], data=deepcopy(data), conclusion=conclusion)
-    return AnalyzeStepUpdate(
+    update = AnalyzeStepUpdate(
         step_results=[*state["step_results"], result], step_index=index + 1, current_data=None,
     )
+    if state.get("analysis_id"):
+        update.update(messages=[chat_message(state, f"step:{step['step_id']}", f"### {heading}\n\n{conclusion}")],
+                      status="正在执行下一分析阶段")
+    return update

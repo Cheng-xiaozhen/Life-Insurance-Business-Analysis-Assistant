@@ -6,6 +6,7 @@ from typing import TypedDict
 from langchain_core.runnables import RunnableConfig
 
 from life_insurance_business_analysis_assistant.agent.llm import get_llm
+from life_insurance_business_analysis_assistant.agent.chat import chat_message, stream_text
 from life_insurance_business_analysis_assistant.agent.state import AgentState
 from life_insurance_business_analysis_assistant.prompt_loader import load_prompt
 
@@ -39,15 +40,17 @@ def summarize_scenario(state: AgentState, config: RunnableConfig) -> SummarizeSc
     llm = get_llm(thinking=True)
     if llm is None:
         raise RuntimeError("总结模型未配置，请设置 DEEPSEEK_API_KEY")
-    stream = llm.stream_events([
+    summary, message = stream_text(llm, [
         ("system", load_prompt("summarize_scenario")), ("human", json.dumps(payload, ensure_ascii=False)),
-    ], config=config, version="v3")
-    summary = "".join(stream.text).strip()
-    message = stream.output
+    ], config, state, "summary", "场景总结")
     if message.tool_calls:
         raise RuntimeError("场景总结不允许调用工具")
     if message.response_metadata.get("finish_reason") in ("length", "content_filter"):
         raise RuntimeError("场景总结未完整生成")
     if not summary:
         raise RuntimeError("总结模型未返回有效文本")
-    return SummarizeScenarioUpdate(summary=summary)
+    update = SummarizeScenarioUpdate(summary=summary)
+    if state.get("analysis_id"):
+        update.update(messages=[chat_message(state, "summary", f"### 场景总结\n\n{summary}")],
+                      status="正在生成图表推荐")
+    return update

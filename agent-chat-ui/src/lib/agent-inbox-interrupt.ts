@@ -50,3 +50,33 @@ export function isAgentInboxInterruptSchema(
 
   return hasValidActionRequests && hasValidConfigs;
 }
+
+export type AnalysisInterrupt = {
+  id: string;
+  value: {
+    kind: "scenario_selection" | "slot_completion";
+    prompt: string;
+    candidates?: { scenario_id: string; name: string }[];
+  };
+};
+
+export function getAnalysisInterrupt(
+  value: unknown,
+): AnalysisInterrupt | undefined {
+  if (!value || typeof value !== "object") return;
+  const item = value as AnalysisInterrupt;
+  if (
+    typeof item.id === "string" &&
+    typeof item.value?.prompt === "string" &&
+    (item.value.kind === "slot_completion" ||
+      (item.value.kind === "scenario_selection" &&
+        Array.isArray(item.value.candidates) &&
+        item.value.candidates.every(
+          (candidate) =>
+            candidate != null &&
+            typeof candidate.scenario_id === "string" &&
+            typeof candidate.name === "string",
+        )))
+  )
+    return item;
+}

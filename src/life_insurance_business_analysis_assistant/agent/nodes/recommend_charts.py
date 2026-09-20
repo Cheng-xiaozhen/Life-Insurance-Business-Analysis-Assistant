@@ -4,6 +4,8 @@ import json
 from typing import Literal, TypedDict
 
 from langchain_core.runnables import RunnableConfig
+from langchain_core.runnables.config import merge_configs
+from langgraph.constants import TAG_NOSTREAM
 from pydantic import BaseModel, ConfigDict
 
 from life_insurance_business_analysis_assistant.agent.llm import get_llm
@@ -63,7 +65,7 @@ def recommend_charts(state: AgentState, config: RunnableConfig) -> RecommendChar
     raw = llm.with_structured_output(ChartDecision, method="json_mode").invoke([
         ("system", load_prompt("recommend_charts") + json.dumps(ChartDecision.model_json_schema(), ensure_ascii=False)),
         ("human", json.dumps(payload, ensure_ascii=False)),
-    ], config=config)
+    ], config=merge_configs(config, {"tags": [TAG_NOSTREAM]}))
     decision = ChartDecision.model_validate(raw)
     if decision.step_id != step["step_id"]:
         raise ValueError("图表只能引用首步数据")

@@ -15,6 +15,7 @@ import { ThreadView } from "../agent-inbox";
 import { useQueryState, parseAsBoolean } from "nuqs";
 import { GenericInterruptView } from "./generic-interrupt";
 import { useArtifact } from "../artifact";
+import { getAnalysisInterrupt } from "@/lib/agent-inbox-interrupt";
 
 function CustomComponent({
   message,
@@ -79,6 +80,8 @@ function Interrupt({
   isLastMessage,
   hasNoAIOrToolMessages,
 }: InterruptProps) {
+  const { values } = useStreamContext();
+  if (values.analysis_id || getAnalysisInterrupt(interrupt)) return null;
   const fallbackValue = Array.isArray(interrupt)
     ? (interrupt as Record<string, any>[])
     : (((interrupt as { value?: unknown } | undefined)?.value ??
@@ -117,7 +120,7 @@ export function AssistantMessage({
 
   const thread = useStreamContext();
   const isLastMessage =
-    thread.messages[thread.messages.length - 1].id === message?.id;
+    thread.messages[thread.messages.length - 1]?.id === message?.id;
   const hasNoAIOrToolMessages = !thread.messages.find(
     (m) => m.type === "ai" || m.type === "tool",
   );
@@ -164,6 +167,11 @@ export function AssistantMessage({
               <div className="py-1">
                 <MarkdownText>{contentString}</MarkdownText>
               </div>
+            )}
+            {message?.additional_kwargs?.pending === true && !isLoading && (
+              <p className="text-destructive text-sm">
+                此段生成未完成，尚未保存为分析结论。请从中断处重试。
+              </p>
             )}
 
             {!hideToolCalls && (

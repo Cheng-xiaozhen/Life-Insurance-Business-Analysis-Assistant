@@ -15,7 +15,7 @@ from life_insurance_business_analysis_assistant.agent.state import create_initia
 from life_insurance_business_analysis_assistant.data_query import make_fake_query
 
 
-def test_workflow_integration(studio=False):
+def test_workflow_integration(studio=False, chat=False):
     path = Path(__file__).resolve().parents[1] / "config/templates/Scenario/场景分析模板.yaml"
     slots = {"年份": 2026, "月份": 8, "渠道": "个险", "机构范围": "全系统"}
     complete = {"年份": 2026, "月份": 8}
@@ -80,16 +80,28 @@ def test_workflow_integration(studio=False):
                 return_value=model,
             )) for node, model in [("resolve_slots", extractor), ("analyze_step", analyzer),
                                   ("summarize_scenario", summarizer), ("recommend_charts", charts)]]
-            interrupts = run({"question": question} if studio else create_initial_state(question))
+            initial = {"messages": [{"type": "human", "id": name, "content": [{"type": "text", "text": question}]}]} if chat else {"question": question}
+            interrupts = run(initial if studio else create_initial_state(question))
             for kind, reply in replies:
                 assert len(interrupts) == 1 and interrupts[0].value["kind"] == kind
                 paused = graph.get_state(config).values
                 assert paused["step_results"] == [] and paused["summary"] is None
                 query.assert_not_called()
-                interrupts = run(Command(resume=reply))
+                if studio:
+                    assert paused["messages"][-1].type == "ai"
+                    assert paused["status"] == "等待补充信息"
+                interrupts = run(Command(resume={interrupts[0].id: reply}))
             assert not interrupts
             snapshot = graph.get_state(config)
             result = snapshot.values
+            if studio:
+                assert result["status"] == "已完成"
+                assert result["messages"][0].content
+                ids = [message.id for message in result["messages"]]
+                assert len(ids) == len(set(ids))
+                order[:] = [node for node in order if node not in {
+                    "prepare_chat", "present_clarification", "present_charts", "no_match",
+                }]
             assert snapshot.next == () and result["question"] == question
             assert result["clarification"] is None and result["user_reply"] is None
             assert result["current_data"] is None and result["scenario_id"] == scenario_id
@@ -105,6 +117,12 @@ def test_workflow_integration(studio=False):
                 continue
 
             steps = result["template"]["steps"]
+            if studio:
+                saved = {message.id: message.content for message in result["messages"]}
+                for step in steps:
+                    assert f"模拟步骤结论-{step['step_id']}" in saved[f"{result['analysis_id']}:step:{step['step_id']}"]
+                assert "模拟场景整体总结" in saved[f"{result['analysis_id']}:summary"]
+                assert len([message for message in result["messages"] if message.type == "human"]) == 1 + len(replies)
             expected_order = ["match_scenario"]
             if replies and replies[0][0] == "scenario_selection":
                 expected_order.append("clarify")
@@ -150,3 +168,4 @@ def test_workflow_integration(studio=False):
 if __name__ == "__main__":
     test_workflow_integration()
     test_workflow_integration(studio=True)
+    test_workflow_integration(studio=True, chat=True)
