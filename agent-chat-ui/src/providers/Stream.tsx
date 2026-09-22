@@ -26,6 +26,7 @@ import { getApiKey } from "@/lib/api-key";
 import { useThreads } from "./Thread";
 import { toast } from "sonner";
 import type { ExecutionEntry } from "@/components/thread/execution-pane";
+import type { AnalysisChart } from "@/components/thread/analysis-charts";
 
 export type StateType = {
   messages: Message[];
@@ -34,6 +35,7 @@ export type StateType = {
   status?: string;
   analysis_id?: string;
   execution?: Record<string, ExecutionEntry>;
+  chart_recommendations?: AnalysisChart[] | null;
 };
 
 type AnalysisDelta = {

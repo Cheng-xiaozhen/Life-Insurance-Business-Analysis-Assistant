@@ -20,7 +20,7 @@ def test_llm():
             assert plain is get_llm(thinking=False) and thinking is get_llm(thinking=True)
             assert plain is not thinking
             decision = {"recommended": False, "chart_type": None, "step_id": 1, "dimensions": [],
-                        "metrics": [], "reason": "单条记录", "description": "阅读结论"}
+                        "metrics": [], "reason": "单条记录", "description": "阅读结论", "candidate_id": None}
             cases = [
                 (plain, SlotExtraction, "function_calling", {
                     "role": "assistant", "content": None, "tool_calls": [{"id": "call_1", "type": "function",

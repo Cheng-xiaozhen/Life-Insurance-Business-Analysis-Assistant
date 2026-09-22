@@ -1,6 +1,8 @@
-"""运行：python -B tests/test_match_scenario.py。无需模型或网络。"""
+"""运行：python -B tests/test_match_scenario.py。模型为显式模拟，不访问网络。"""
 
 from copy import deepcopy
+from unittest.mock import patch
+from workflow_support import models, patched_models
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -16,15 +18,15 @@ from life_insurance_business_analysis_assistant.agent.nodes.match_scenario impor
 from life_insurance_business_analysis_assistant.agent.state import AgentState, create_initial_state
 
 
-def test_match_scenario():
-    path = Path(__file__).resolve().parents[1] / "config/templates/Scenario/场景分析模板.yaml"
+def check_match_scenario():
+    path = Path(__file__).resolve().parents[1] / "config/templates/Scenario"
     catalog = load_scenario_catalog(path)
     context = AgentContext(catalog)
     runtime = Runtime(context=context)
     for question, ids, scores in [
         ("人力情况", [], []),
         ("标保达成率，标保达成率", ["standard_premium_review"], [3.0]),
-        ("价值达成率和标保", ["value_review", "standard_premium_review"], [3.0, 1.0]),
+        ("价值达成率和标保", ["standard_premium_review", "value_review"], [1.0, 3.0]),
         ("价值和标保", ["standard_premium_review", "value_review"], [1.0, 1.0]),
     ]:
         state = create_initial_state(question)
@@ -35,20 +37,20 @@ def test_match_scenario():
         assert state == before
         assert [c["scenario_id"] for c in result["candidates"]] == ids
         assert [c["score"] for c in result["candidates"]] == scores
-        assert result["scenario_id"] == (ids[0] if len(ids) == 1 else None)
-        assert (result["clarification"] is not None) == (len(ids) > 1)
+        assert result["scenario_id"] is None
+        assert (result["clarification"] is not None) == bool(ids)
 
     with TemporaryDirectory() as directory:
         sample = Path(directory) / "catalog.yaml"
         entry = {"场景编码": "a", "场景名称": "场景 A", "触发关键词": [" 标保 ", "标保"]}
-        OmegaConf.save(OmegaConf.create({"场景": [entry]}), sample)
+        OmegaConf.save(OmegaConf.create(entry), sample)
         assert load_scenario_catalog(sample)[0]["keywords"] == ["标保"]
         for invalid in [
             {}, {"场景": {}}, {"场景": [None]}, {"场景": [entry, entry]},
-            {"场景": [{**entry, "触发关键词": [""]}]},
-            {"场景": [{**entry, "触发关键词": [1]}]},
-            {"场景": [{**entry, "场景编码": " "}]},
-            {"场景": [{**entry, "场景名称": None}]},
+            {**entry, "触发关键词": [""]},
+            {**entry, "触发关键词": [1]},
+            {**entry, "场景编码": " "},
+            {**entry, "场景名称": None},
         ]:
             OmegaConf.save(OmegaConf.create(invalid), sample)
             try:
@@ -63,9 +65,14 @@ def test_match_scenario():
     graph.add_edge(START, "match_scenario")
     graph.add_edge("match_scenario", END)
     output = graph.compile().invoke(create_initial_state("标保"), context=context)
-    assert output["scenario_id"] == "standard_premium_review"
+    assert output["scenario_id"] is None and output["clarification"]["kind"] == "scenario_selection"
     assert output["question"] == "标保"
     assert output["template"] is None
+
+
+def test_match_scenario():
+    with patched_models(models()):
+        check_match_scenario()
 
 
 if __name__ == "__main__":

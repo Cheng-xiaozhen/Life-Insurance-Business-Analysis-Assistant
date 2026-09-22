@@ -4,9 +4,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict
 
-from omegaconf import OmegaConf
+from life_insurance_business_analysis_assistant.scenario_store import read_scenarios
 
 from life_insurance_business_analysis_assistant.data_query import QueryData
+from life_insurance_business_analysis_assistant.agent.state import QueryCapabilities
 
 
 class ScenarioEntry(TypedDict):
@@ -24,17 +25,16 @@ class AgentContext:
     scenario_catalog: list[ScenarioEntry]
     template_path: str | Path | None = None  # 场景 YAML 来源，加载节点调用前提供。
     query_data: QueryData | None = None  # 由调用方注入真实查询或 Fake，不自动回退。
+    query_capabilities: QueryCapabilities | None = None
 
 
 def load_scenario_catalog(path: str | Path) -> list[ScenarioEntry]:
     """只校验目录字段；完整模板校验留给 load_template 节点。"""
-    raw = OmegaConf.to_container(OmegaConf.load(path), resolve=False)
-    if not isinstance(raw, dict) or not isinstance(raw.get("场景"), list):
-        raise ValueError("场景目录必须包含 '场景' 列表")
+    entries = read_scenarios(path)
 
     catalog: list[ScenarioEntry] = []
     seen: set[str] = set()
-    for index, item in enumerate(raw["场景"], start=1):
+    for index, item in enumerate(entries, start=1):
         if not isinstance(item, dict):
             raise ValueError(f"第 {index} 个场景必须是映射")
         scenario_id, name = item.get("场景编码"), item.get("场景名称")
@@ -46,7 +46,7 @@ def load_scenario_catalog(path: str | Path) -> list[ScenarioEntry]:
         if scenario_id in seen:
             raise ValueError(f"场景编码重复: {scenario_id}")
         keywords = item.get("触发关键词")
-        if not isinstance(keywords, list) or not keywords:
+        if not isinstance(keywords, list):
             raise ValueError(f"场景 {scenario_id} 必须提供非空触发关键词列表")
         if any(not isinstance(word, str) or not word.strip() for word in keywords):
             raise ValueError(f"场景 {scenario_id} 的关键词必须是非空字符串")

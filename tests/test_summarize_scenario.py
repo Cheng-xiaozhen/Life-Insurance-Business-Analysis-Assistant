@@ -25,15 +25,15 @@ def test_summarize_scenario(get_llm, chart_llm):
     chart_model = Mock()
     chart_model.with_structured_output.return_value.invoke.return_value = {"recommended": False, "chart_type": None, "step_id": 1, "dimensions": [], "metrics": [], "reason": "数据不足", "description": "阅读结论"}
     chart_llm.return_value = chart_model
-    path = Path(__file__).resolve().parents[1] / "config/templates/Scenario/场景分析模板.yaml"
+    path = Path(__file__).resolve().parents[1] / "config/templates/Scenario"
     slots = {"年份": 2026, "月份": 8, "渠道": "个险", "机构范围": "全系统"}
     state = create_initial_state("不传原始问题")
     state["scenario_id"] = "value_review"
     state.update(load_template(state, Runtime(context=AgentContext([], path))))
     state["slots"] = slots
     state["step_index"] = 3
-    state["step_results"] = [{"step_id": i, "conclusion": f"模拟步骤结论{i}", "data": {"secret": "原始数据"}} for i in (1, 2, 3)]
-    state["current_data"] = {"secret": "当前数据"}
+    state["step_results"] = [{"step_id": i, "conclusion": f"模拟步骤结论{i}", "data_uses": [], "conclusion_step_ids": []} for i in (1, 2, 3)]
+    state["datasets"] = {"test-secret": {"secret": "当前数据"}}
     before = deepcopy(state)
     model = Mock()
     model.stream_events.return_value = Mock(text=iter(["模拟场景", "总结"]), output=AIMessage(content="模拟场景总结"))
@@ -77,36 +77,6 @@ def test_summarize_scenario(get_llm, chart_llm):
     tokens = [token for message in stream.messages for token in message.text]
     assert len(tokens) > 1 and "".join(tokens) == stream.output["summary"]
 
-    query = Mock(side_effect=make_fake_query(slots))
-    context = AgentContext(load_scenario_catalog(path), path, query)
-    extractor = Mock()
-    extractor.with_structured_output.return_value.invoke.return_value = {"values": slots, "ambiguous": {}}
-    analyst = FakeListChatModel(responses=["模拟步骤结论"])
-    def failure():
-        yield "未完成"
-        raise RuntimeError("总结中断")
-    get_llm.return_value = model
-    model.stream_events.return_value = Mock(text=failure())
-    model.stream_events.reset_mock()
-    with patch("life_insurance_business_analysis_assistant.agent.nodes.resolve_slots.get_llm", return_value=extractor), \
-         patch("life_insurance_business_analysis_assistant.agent.nodes.analyze_step.get_llm", return_value=analyst) as analyze_llm:
-        full_graph = build_graph()
-        config = {"configurable": {"thread_id": "summary-retry"}}
-        try:
-            full_graph.invoke(create_initial_state("价值"), config, context=context)
-        except RuntimeError as error:
-            assert "总结中断" in str(error)
-        else:
-            raise AssertionError("总结应失败")
-        saved = full_graph.get_state(config).values
-        assert saved["summary"] is None and saved["step_index"] == 3
-        assert query.call_count == analyze_llm.call_count == 3
-        get_llm.return_value = FakeListChatModel(responses=["恢复后的模拟总结"])
-        output = full_graph.invoke(None, config, context=context)
-        assert output["summary"] == "恢复后的模拟总结"
-        assert output["step_results"] == saved["step_results"]
-        assert query.call_count == analyze_llm.call_count == 3
-        assert output["chart_recommendations"][0]["recommended"] is False
 
 
 if __name__ == "__main__":

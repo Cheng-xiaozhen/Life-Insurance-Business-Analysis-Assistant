@@ -18,11 +18,13 @@ StepData: TypeAlias = dict[str, JSONValue]
 
 
 class ScenarioCandidate(TypedDict):
-    """关键词匹配得到的一个候选场景。"""
+    """语义匹配得到的候选场景，附带关键词规则分数。"""
 
     scenario_id: str  # 场景唯一编码。
     name: str  # 场景展示名称。
     score: float  # 规则匹配分数。
+    confidence: float  # 模型评估值，不是经过校准的正确概率。
+    reason: str
 
 
 class SlotDefinition(TypedDict):
@@ -31,7 +33,7 @@ class SlotDefinition(TypedDict):
     description: str  # 槽位的业务含义。
     type: Literal["string", "integer"]  # 声明的槽位类型。
     required: bool  # 执行前是否必须有有效值。
-    default: NotRequired[SlotValue]  # 用户未提供时可采用的默认值。
+    default: NotRequired[SlotValue]  # 仅非必填槽位允许采用默认值。
     minimum: NotRequired[int]  # 整数槽位的最小允许值。
     maximum: NotRequired[int]  # 整数槽位的最大允许值。
 
@@ -71,16 +73,96 @@ class SlotIssue(TypedDict):
 class Clarification(TypedDict):
     """中断时需要用户回答的问题。"""
 
-    kind: Literal["scenario_selection", "slot_completion"]  # 选择场景或补齐槽位。
+    kind: Literal["scenario_selection", "slot_completion", "step_clarification"]
     prompt: str  # 展示给用户的追问内容。
     slot_issues: list[SlotIssue]  # 场景选择时为空，候选读取 candidates。
+
+
+class TimeRange(TypedDict):
+    start: str  # ISO 日期，闭区间。
+    end: str
+
+
+class DataFilter(TypedDict):
+    field: str
+    op: Literal["eq", "in", "gt", "gte", "lt", "lte"]
+    values: list[str | int | float]
+
+
+class DataRequirement(TypedDict):
+    requirement_id: str
+    metrics: list[str]
+    time_ranges: dict[str, TimeRange]
+    grain: str
+    dimensions: list[str]
+    scope: dict[str, SlotValue]
+    filters: list[DataFilter]
+    completeness: Literal["full", "available"]
+
+
+class QueryRequest(TypedDict):
+    request_key: str
+    source_id: str
+    source_version: str | None
+    population: Literal["business", "sample"]
+    requirement: DataRequirement
+
+
+class DatasetRecord(TypedDict):
+    request_key: str
+    source_id: str
+    source_version: str | None
+    population: Literal["business", "sample"]
+    coverage: DataRequirement  # 实际响应覆盖范围，不可从请求直接冒充。
+    complete: bool  # 仅相对于 population、scope 和 filters。
+    truncated: bool
+    units: dict[str, str | None]
+    data: StepData
+
+
+class MetricDefinition(TypedDict):
+    period: Literal["month", "ytd"]
+    unit: str | None
+    grains: list[str]
+
+
+class QueryCapabilities(TypedDict):
+    source_id: str
+    source_version: str | None
+    population: Literal["business", "sample"]
+    metrics: dict[str, MetricDefinition]
+    grains: dict[str, list[str]]  # 粒度到唯一实体键；总体为 []。
+    stable_entity_keys: bool  # 同一快照、范围下各指标返回相同实体集合。
+
+
+class DataUse(TypedDict):
+    requirement_id: str
+    dataset_id: str
+    metrics: list[str]
+    selection_filters: list[DataFilter]
+
+
+class StepAnswer(TypedDict):
+    question: str
+    answer: str
+
+
+class StepPlan(TypedDict):
+    step_id: int
+    requirements: list[DataRequirement] # 本步骤所需的数据纯结论综合时可为空
+    data_uses: list[DataUse] # 已验证可使用的数据引用及选择条件
+    queries: list[QueryRequest]
+    conclusion_step_ids: list[int]
+    clarification_answers: list[StepAnswer] # 当前步骤，已经澄清的问题与回答，支持连续追问
+    reason: str # 简短决策依据，不存模型内部推理
 
 
 class StepResult(TypedDict):
     """一个已成功完成的步骤及其分析结论。"""
 
     step_id: int  # 对应模板中的步骤序号。
-    data: StepData  # 该步骤实际用于分析的数据。
+    data_uses: list[DataUse]
+    conclusion_step_ids: list[int]
     conclusion: str  # 完整步骤结论，不保存流式片段。
 
 
@@ -89,12 +171,15 @@ class ChartRecommendation(TypedDict):
 
     recommended: bool  # 是否推荐；不推荐时仍保存原因。
     chart_type: Literal["bar", "line", "pie", "scatter"] | None  # 不推荐时为 None。
-    # ponytail: POC 每条建议引用一个步骤，跨步骤合并规则确认后再扩展。
+    # 每条建议引用一个已使用数据集，不隐式聚合或拼接。
     step_id: int  # 对应模板中的步骤序号。
     dimensions: list[str]  # 图表使用的维度，如机构。
     metrics: list[str]  # 图表使用的指标，如标保达成率。
     description: str  # 说明如何阅读这张图表。
     reason: str  # 推荐或不推荐的原因。
+    dataset_id: str | None
+    data: list[dict[str, JSONValue]]  # Python 从实际记录组装，LLM 不生成数值。
+    units: dict[str, str | None]
 
 
 class AgentState(TypedDict):
@@ -102,8 +187,8 @@ class AgentState(TypedDict):
 
     question 始终保留；补参使用已有槽位、当前追问和最新回复，不存完整历史。
     无效或有歧义的明确修正应移除对应旧槽位并追问，不回退到默认值。
-    analyze_step 的 prompt 不读取前序结果；成功后同时保存完整结果、
-    推进 step_index 并清空 current_data。流式片段不写入 State。
+    analyze_step 仅使用计划引用的数据及前序结论；成功后保存完整结果、
+    推进 step_index 并清空 step_plan。原始数据不在各步重复保存。
     失败不推进步骤；总结只读取步骤结论，图表推荐可以读取步骤数据。
     """
 
@@ -115,10 +200,11 @@ class AgentState(TypedDict):
     clarification: Clarification | None  # 当前追问；None 表示没有待解决的追问。
     user_reply: str | None  # 最新槽位回复，resolve_slots 处理后清空。
     step_index: int  # 零基列表索引，与模板 step_id 区分。
-    current_data: StepData | None  # 当前步骤取数结果，None 表示尚未取数，不能用空数据代表失败。
+    step_plan: StepPlan | None
+    datasets: dict[str, DatasetRecord]
     step_results: list[StepResult]  # 按执行顺序保存的已完成步骤结果。
     summary: str | None  # 最后的完整场景总结；None 表示尚未生成。
-    chart_recommendations: list[ChartRecommendation] | None  # None 未执行；POC 保存一条推荐决策。
+    chart_recommendations: list[ChartRecommendation] | None  # None 未执行；完成后包含推荐或不推荐决策。
 
 
 def create_initial_state(question: str) -> AgentState:
@@ -132,8 +218,17 @@ def create_initial_state(question: str) -> AgentState:
         clarification=None,
         user_reply=None,
         step_index=0,
-        current_data=None,
+        step_plan=None,
+        datasets={},
         step_results=[],
         summary=None,
         chart_recommendations=None,
     )
+
+
+
+def current_step(state: AgentState) -> ScenarioStep:
+    template, index = state["template"], state["step_index"]
+    if template is None or type(index) is not int or not 0 <= index < len(template["steps"]):
+        raise ValueError("step_index 超出当前模板步骤范围")
+    return template["steps"][index]

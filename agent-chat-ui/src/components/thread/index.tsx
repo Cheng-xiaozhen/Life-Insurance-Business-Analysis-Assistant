@@ -1,4 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Fragment, ReactNode, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -113,6 +115,8 @@ function OpenGitHubRepo() {
 }
 
 export function Thread() {
+  const searchParams = useSearchParams();
+  const scenariosHref = `/scenarios?${searchParams.toString()}`;
   const [artifactContext, setArtifactContext] = useArtifactContext();
   const [artifactOpen, closeArtifact] = useArtifactOpen();
 
@@ -405,7 +409,13 @@ export function Thread() {
                   </Button>
                 )}
               </div>
-              <div className="absolute top-2 right-4 flex items-center">
+              <div className="absolute top-2 right-4 flex items-center gap-4">
+                <Button
+                  asChild
+                  variant="ghost"
+                >
+                  <Link href={scenariosHref}>分析场景管理</Link>
+                </Button>
                 <OpenGitHubRepo />
               </div>
             </div>
@@ -451,6 +461,12 @@ export function Thread() {
               </div>
 
               <div className="flex items-center gap-4">
+                <Button
+                  asChild
+                  variant="ghost"
+                >
+                  <Link href={scenariosHref}>分析场景管理</Link>
+                </Button>
                 <div className="flex items-center">
                   <OpenGitHubRepo />
                 </div>
@@ -626,9 +642,11 @@ export function Thread() {
                         }
                         aria-label="分析问题或补充参数"
                         placeholder={
-                          analysisInterrupt
-                            ? "请输入需要补充的参数，例如：2026年8月"
-                            : "请输入完整分析问题（每次新问题独立分析）"
+                          analysisInterrupt?.value.kind === "step_clarification"
+                            ? "请回答当前步骤的问题"
+                            : analysisInterrupt
+                              ? "请输入需要补充的参数，例如：2026年8月"
+                              : "请输入完整分析问题（每次新问题独立分析）"
                         }
                         className="field-sizing-content resize-none border-none bg-transparent p-3.5 pb-0 shadow-none ring-0 outline-none focus:ring-0 focus:outline-none"
                       />

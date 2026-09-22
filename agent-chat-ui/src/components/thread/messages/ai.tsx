@@ -17,6 +17,7 @@ import { useQueryState, parseAsBoolean } from "nuqs";
 import { GenericInterruptView } from "./generic-interrupt";
 import { useArtifact } from "../artifact";
 import { getAnalysisInterrupt } from "@/lib/agent-inbox-interrupt";
+import { AnalysisCharts } from "../analysis-charts";
 
 function CustomComponent({
   message,
@@ -176,6 +177,9 @@ export function AssistantMessage({
               <div className="py-1">
                 <MarkdownText>{deferredContent}</MarkdownText>
               </div>
+            )}
+            {message?.additional_kwargs?.pending !== true && (
+              <AnalysisCharts value={message?.additional_kwargs?.charts} />
             )}
             {message?.additional_kwargs?.pending === true && !isLoading && (
               <p className="text-destructive text-sm">

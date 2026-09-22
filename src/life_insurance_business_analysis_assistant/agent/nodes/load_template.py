@@ -4,7 +4,7 @@ import re
 from typing import Any, TypedDict
 
 from langgraph.runtime import Runtime
-from omegaconf import OmegaConf
+from life_insurance_business_analysis_assistant.scenario_store import read_scenarios
 
 from life_insurance_business_analysis_assistant.agent.context import AgentContext
 from life_insurance_business_analysis_assistant.agent.state import (
@@ -98,11 +98,7 @@ def load_template(
     path = runtime.context.template_path
     if path is None:
         raise ValueError("加载模板前必须提供 AgentContext.template_path")
-    raw = OmegaConf.to_container(OmegaConf.load(path), resolve=False)
-    root = _mapping(raw, "场景目录")
-    entries = root.get("场景")
-    if not isinstance(entries, list):
-        raise ValueError("场景目录必须包含 '场景' 列表")
+    entries = read_scenarios(path)
     selected = []
     for entry in entries:
         entry = _mapping(entry, "场景目录条目")
@@ -111,7 +107,7 @@ def load_template(
     if len(selected) != 1:
         raise ValueError(f"场景 {scenario_id} 必须唯一存在，实际找到 {len(selected)} 个")
     source = selected[0]
-    slot_source = _mapping(source.get("输入参数"), f"{scenario_id}.输入参数")
+    slot_source = _mapping(source.get("输入参数", {}), f"{scenario_id}.输入参数")
     slots = {name: _slot(value, f"槽位 {name}") for name, value in slot_source.items()}
     raw_steps = source.get("分析思路")
     if not isinstance(raw_steps, list) or not raw_steps:
@@ -125,7 +121,7 @@ def load_template(
         location = f"步骤 {step_id}"
         text = _text(step.get("分析步骤"), f"{location}.分析步骤")
         _check_references(text, slots, location)
-        params = _mapping(step.get("取数参数"), f"{location}.取数参数")
+        params = _mapping(step.get("取数参数", {}), f"{location}.取数参数")
         for name, value in params.items():
             if type(value) not in (str, int):
                 raise ValueError(f"{location}.取数参数.{name} 必须是字符串或整数")
@@ -134,7 +130,7 @@ def load_template(
                 _check_references(value, slots, f"{location}.取数参数.{name}")
         normalized = ScenarioStep(
             step_id=step_id, text=text,
-            metrics=_texts(step.get("指标"), f"{location}.指标"),
+            metrics=[] if step.get("指标") == [] else _texts(step.get("指标"), f"{location}.指标"),
             query_params=dict(params),
         )
         if "分析模式" in step:
@@ -152,7 +148,7 @@ def load_template(
         time_dimension=_text(source.get("时间维度"), "时间维度"),
         analysis_object=_text(source.get("分析对象"), "分析对象"),
         analysis_purpose=_text(source.get("分析目的"), "分析目的"),
-        keywords=list(dict.fromkeys(_texts(source.get("触发关键词"), "触发关键词"))),
+        keywords=[] if source.get("触发关键词") == [] else list(dict.fromkeys(_texts(source.get("触发关键词"), "触发关键词"))),
         slot_definitions=slots,
         steps=steps,
     )

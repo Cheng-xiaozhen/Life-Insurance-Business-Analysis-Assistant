@@ -1,74 +1,64 @@
-"""运行：python -B tests/test_recommend_charts.py；使用模拟模型决策。"""
+"""python -B tests/test_recommend_charts.py；候选来源、真实数值组装和拒绝无效图表。"""
 
-import json
 from copy import deepcopy
-from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
-from langgraph.runtime import Runtime
+from langgraph.types import Command
 
-from life_insurance_business_analysis_assistant.agent.context import AgentContext
-from life_insurance_business_analysis_assistant.agent.nodes.load_template import load_template
-from life_insurance_business_analysis_assistant.agent.nodes.recommend_charts import ChartDecision, recommend_charts
+from life_insurance_business_analysis_assistant.agent.graph import build_graph
+from life_insurance_business_analysis_assistant.agent.nodes.recommend_charts import (
+    ChartDecision, ChartDecisions, assemble_chart, chart_candidates, recommend_charts,
+)
 from life_insurance_business_analysis_assistant.agent.state import create_initial_state
+from workflow_support import context, models, patched_models, payload
 
 
-@patch("life_insurance_business_analysis_assistant.agent.nodes.recommend_charts.get_llm")
-def test_recommend_charts(get_llm):
-    path = Path(__file__).resolve().parents[1] / "config/templates/Scenario/场景分析模板.yaml"
-    state = create_initial_state("标保")
-    state["scenario_id"] = "standard_premium_review"
-    state.update(load_template(state, Runtime(context=AgentContext([], path))))
-    state["step_index"] = 5
-    state["summary"] = "总结"
-    state["step_results"] = [
-        {"step_id": 1, "data": {"rows": [{"机构": "甲", "金额": 10}, {"机构": "乙", "金额": 20}]}, "conclusion": "首步结论"},
-        {"step_id": 2, "data": {"secret": "后续数据"}, "conclusion": "后续结论"},
-    ]
-    model = Mock()
-    get_llm.return_value = model
-    invoke = model.with_structured_output.return_value.invoke
-    decision = {"recommended": True, "chart_type": "bar", "step_id": 1,
-                "dimensions": ["机构"], "metrics": ["金额"], "reason": "机构金额比较", "description": "比较两机构"}
-    invoke.return_value = decision
+def test_recommend_charts():
+    ctx, mock = context(), models()
+    graph = build_graph()
+    config = {"configurable": {"thread_id": "charts"}, "recursion_limit": 100}
+    with patched_models(mock):
+        graph.invoke(create_initial_state("2026年8月个险全系统标保"), config, context=ctx)
+        state = graph.invoke(Command(resume="standard_premium_review"), config, context=ctx)
+    candidates = chart_candidates(state)
+    assert len(candidates) == 3  # 第2/3、第4/5步的重复数据候选去重。
+    candidate = next(c for c in candidates if c["step_id"] == 2)
+    decision = ChartDecision(recommended=True, chart_type="bar", step_id=2, candidate_id=candidate["candidate_id"],
+                             dimensions=["机构"], metrics=["标保达成率"], reason="比较模拟机构", description="使用样例数据")
     before = deepcopy(state)
-    result = recommend_charts(state, {})
-    assert result == {"chart_recommendations": [decision]}
-    assert state == before
-    prompt = invoke.call_args.args[0][0][1]
-    assert json.loads(prompt.split("JSON Schema:\n", 1)[1]) == ChartDecision.model_json_schema()
-    payload = json.loads(invoke.call_args.args[0][1][1])
-    assert payload["available_fields"] == ["机构", "金额"]
-    assert "后续数据" not in str(payload) and "后续结论" not in str(payload)
-    for changes in ({"chart_type": "radar"}, {"step_id": 2}, {"metrics": ["不存在"]},
-                    {"recommended": False}, {"reason": " "}, {"dimensions": []},
-                    {"chart_type": "scatter"}, {"dimensions": ["金额"]}):
-        invoke.return_value = {**decision, **changes}
+    assembled = assemble_chart(decision, candidate)
+    assert assembled["recommended"] and assembled["units"] == {"标保达成率": "%"}
+    assert assembled["data"][0]["标保达成率"] == float(candidate["data"]["rows"][0]["标保达成率"].removesuffix("%"))
+    assert "模拟" in assembled["description"]
+    for changes in ({"chart_type": "pie"}, {"chart_type": "line"}, {"chart_type": "scatter"}, {"dimensions": []}):
+        result = assemble_chart(decision.model_copy(update=changes), candidate)
+        assert not result["recommended"] and not result["data"]
+    for changes in ({"metrics": ["不存在"]}, {"dimensions": ["标保达成率"]}, {"step_id": 1}):
         try:
-            recommend_charts(state, {})
+            assemble_chart(decision.model_copy(update=changes), candidate)
         except ValueError:
             pass
         else:
-            raise AssertionError(f"非法决策未被拒绝: {changes}")
+            raise AssertionError("未知引用必须拒绝")
+    invoke = mock["recommend_charts"].with_structured_output.return_value.invoke
+    invoke.side_effect = None
+    invoke.return_value = {"recommendations": [decision.model_dump()]}
+    with patched_models(mock):
+        update = recommend_charts(state, {})
+        assert update["chart_recommendations"][0] == assembled
         assert state == before
-    state["step_results"][0]["data"] = {"rows": [{"金额": 10}], "query_params": {"机构": "全系统"}}
-    invoke.return_value = {**decision, "recommended": False, "chart_type": None,
-                           "dimensions": [], "metrics": [], "reason": "单条总体记录", "description": "阅读结论"}
-    assert recommend_charts(state, {})["chart_recommendations"][0]["recommended"] is False
-    assert json.loads(invoke.call_args.args[0][1][1])["available_fields"] == ["金额"]
-    state["step_results"][0]["data"] = {"rows": []}
-    assert recommend_charts(state, {})["chart_recommendations"][0]["reason"] == "单条总体记录"
-    invoke.side_effect = RuntimeError("模型失败")
-    before = deepcopy(state)
-    try:
-        recommend_charts(state, {})
-    except RuntimeError:
-        pass
-    else:
-        raise AssertionError("不能将模型失败伪装为不推荐")
+        sent = payload(invoke.call_args.args[0])
+        assert any(c["step_id"] == 4 for c in sent["candidates"])
+        invoke.side_effect = RuntimeError("模型失败")
+        try:
+            recommend_charts(state, {})
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("模型失败不能伪装为不推荐")
     assert state == before
+    print("chart candidate deduplication, numeric assembly and validation: PASS")
 
 
 if __name__ == "__main__":
     test_recommend_charts()
-    print("recommend_charts: PASS")

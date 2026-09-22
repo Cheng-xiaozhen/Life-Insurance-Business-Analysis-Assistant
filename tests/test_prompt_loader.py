@@ -8,7 +8,7 @@ from life_insurance_business_analysis_assistant.prompt_loader import load_prompt
 
 
 def test_prompt_loader():
-    for name in ("resolve_slots", "analyze_step", "summarize_scenario", "recommend_charts"):
+    for name in ("match_scenario", "plan_step", "resolve_slots", "analyze_step", "summarize_scenario", "recommend_charts"):
         assert load_prompt(name).strip()
     for name in ("../settings", "..\\settings", "/settings", "C:\\settings", "", "resolve_slots.md"):
         try:

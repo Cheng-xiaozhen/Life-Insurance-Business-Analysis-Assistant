@@ -3,6 +3,7 @@
 from typing import Annotated, NotRequired
 from uuid import uuid4
 from time import monotonic
+import logging
 
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.runnables import RunnableConfig
@@ -15,6 +16,9 @@ from langchain_core.runnables.config import merge_configs
 from typing_extensions import TypedDict
 
 from life_insurance_business_analysis_assistant.agent.state import AgentState, create_initial_state
+from life_insurance_business_analysis_assistant.data_coverage import pending_queries
+
+logger = logging.getLogger(__name__)
 
 
 def merge_execution(previous: dict, update: dict) -> dict:
@@ -91,12 +95,13 @@ def track_execution(name, node):
             "resolve_slots": "解析分析参数", "present_clarification": "请求补充信息",
             "clarify": "等待补充信息", "no_match": "未匹配到分析场景",
             "fetch_step_data": "查询数据", "analyze_step": "生成步骤分析",
+            "plan_step": "规划步骤执行",
             "summarize_scenario": "生成场景总结", "recommend_charts": "生成图表推荐",
             "present_charts": "分析报告已完成",
         }
         label = labels[name]
         suffix = None
-        if name in ("fetch_step_data", "analyze_step") and step:
+        if name in ("plan_step", "fetch_step_data", "analyze_step") and step:
             label += f" · 步骤 {step['step_id']}：{step['text']}"
             if name == "analyze_step":
                 suffix = f"step:{step['step_id']}"
@@ -106,27 +111,44 @@ def track_execution(name, node):
             suffix = "charts"
         turn = next((m.id for m in reversed(state.get("messages", [])) if isinstance(m, HumanMessage)), analysis_id)
         entry_id = f"{analysis_id}:{name}:{index}:{turn}"
+        if name == "fetch_step_data":
+            queries = pending_queries(state)
+            if queries:
+                entry_id += f":{queries[0]['request_key']}"
+                label += " · " + "、".join(queries[0]["requirement"]["metrics"])
         entry = {"id": entry_id, "analysis_id": analysis_id, "label": label, "state": "running"}
         if suffix:
             entry["message_id"] = f"{analysis_id}:{suffix}"
         writer = get_stream_writer()
         writer({"type": "analysis_progress", "entry": entry})
+        logger.info("analysis_id=%s node=%s step_index=%s started", analysis_id, name, index)
         try:
             update = node(state, config)
         except GraphInterrupt:
             writer({"type": "analysis_progress", "entry": {**entry, "state": "waiting"}})
             raise
         except Exception:
+            logger.exception("analysis_id=%s node=%s step_index=%s failed", analysis_id, name, index)
             writer({"type": "analysis_progress", "entry": {**entry, "state": "error"}})
             raise
         if name == "match_scenario":
             candidates = update.get("candidates", [])
-            label = (f"已识别场景：{candidates[0]['name']}" if len(candidates) == 1 else
+            label = (f"待确认场景：{candidates[0]['name']}" if len(candidates) == 1 else
                      "匹配到多个场景，等待选择" if candidates else "未匹配到分析场景")
         elif name == "load_template":
             label = f"分析方案：{update['template']['name']}"
+        elif name == "plan_step":
+            plan = update["step_plan"]
+            if update.get("clarification"):
+                label = "步骤需求待澄清"
+            elif plan["queries"]:
+                label = "复用并补充查询" if plan["data_uses"] else "查询新数据"
+            else:
+                label = "复用已有数据" if plan["data_uses"] else "基于已有结论直接分析"
+            label += f" · 步骤 {plan['step_id']}"
         entry = {**entry, "label": label, "state": "waiting" if name == "present_clarification" else "done"}
         writer({"type": "analysis_progress", "entry": entry})
+        logger.info("analysis_id=%s node=%s completed", analysis_id, name)
         return {**update, "execution": {entry_id: entry}}
     return run
 
@@ -145,16 +167,20 @@ def no_match(state: ChatState):
 
 
 def chart_message(state: ChatState):
-    decision = state["chart_recommendations"][0]
-    title = "图表推荐" if decision["recommended"] else "本次不推荐图表"
-    text = f"### {title}\n\n{decision['reason']}\n\n{decision['description']}"
-    if decision["recommended"]:
-        text += f"\n\n图表类型：{decision['chart_type']}；维度：{'、'.join(decision['dimensions'])}；指标：{'、'.join(decision['metrics'])}。"
+    decisions = state["chart_recommendations"]
+    sections = []
+    for decision in decisions:
+        title = "图表推荐" if decision["recommended"] else "不推荐图表"
+        text = f"#### {title} · 步骤 {decision['step_id']}\n\n{decision['reason']}\n\n{decision['description']}"
+        if decision["recommended"]:
+            text += f"\n\n图表类型：{decision['chart_type']}；维度：{'、'.join(decision['dimensions'])}；指标：{'、'.join(decision['metrics'])}。"
+        sections.append(text)
+    text = "### 图表推荐\n\n" + "\n\n".join(sections)
     previous = next((m for m in reversed(state.get("messages", [])) if m.id == f"{state['analysis_id']}:charts"), None)
     reasoning = previous.additional_kwargs.get("reasoning", "") if previous else ""
     get_stream_writer()({"type": "analysis_delta", "id": f"{state['analysis_id']}:charts",
                          "analysis_id": state["analysis_id"], "start": True, "text": text, "reasoning": reasoning, "status": "已完成"})
-    return {"messages": [chat_message(state, "charts", text, reasoning=reasoning)], "status": "已完成"}
+    return {"messages": [chat_message(state, "charts", text, reasoning=reasoning, charts=decisions)], "status": "已完成"}
 
 
 class AnalysisStream(BaseCallbackHandler):

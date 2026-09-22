@@ -21,7 +21,7 @@ from langgraph.runtime import Runtime
 from life_insurance_business_analysis_assistant.agent.context import AgentContext
 from life_insurance_business_analysis_assistant.agent.llm import get_llm
 from life_insurance_business_analysis_assistant.agent.nodes.load_template import load_template
-from life_insurance_business_analysis_assistant.agent.nodes.recommend_charts import ChartDecision
+from life_insurance_business_analysis_assistant.agent.nodes.recommend_charts import ChartDecisions
 from life_insurance_business_analysis_assistant.agent.nodes.resolve_slots import SlotExtraction
 from life_insurance_business_analysis_assistant.agent.state import create_initial_state
 from life_insurance_business_analysis_assistant.prompt_loader import load_prompt
@@ -38,7 +38,7 @@ def run_case(case, model, prompt):
     name, payload = case["node"], case["input"]
     state = create_initial_state(payload.get("question", "契约验证"))
     state["scenario_id"] = "standard_premium_review"
-    path = ROOT / "config/templates/Scenario/场景分析模板.yaml"
+    path = ROOT / "config/templates/Scenario"
     state.update(load_template(state, Runtime(context=AgentContext([], path))))
     template = state["template"]
     state["slots"] = deepcopy(payload.get("slots", {}))
@@ -51,21 +51,43 @@ def run_case(case, model, prompt):
         }
         state.update(slots=deepcopy(payload["existing_slots"]),
                      user_reply=payload["user_reply"], clarification=deepcopy(payload["clarification"]))
-    elif name == "analyze_step":
-        template["steps"] = [{**payload["step"], "query_params": {}}]
-        state["current_data"] = deepcopy(payload["current_data"])
     elif name == "summarize_scenario":
         template["steps"] = [{"step_id": c["step_id"]} for c in payload["conclusions"]]
         state["step_index"] = len(template["steps"])
-        state["step_results"] = [{**c, "data": {"secret": "不应进入总结"}}
+        state["step_results"] = [{**c, "data_uses": [], "conclusion_step_ids": []}
                                  for c in payload["conclusions"]]
     else:
-        template["analysis_purpose"] = payload["analysis_purpose"]
-        template["steps"] = [{**payload["step"], "metrics": [], "query_params": {}}]
-        state.update(step_index=1, summary="已完成总结", step_results=[{
-            "step_id": payload["step"]["step_id"], "data": deepcopy(payload["data"]),
-            "conclusion": payload["conclusion"],
-        }])
+        # 旧评估样本保留原始观测，适配新的数据引用契约；不补造缺失指标。
+        data = deepcopy(payload.get("current_data", payload.get("data", payload.get("datasets", [{}])[0])))
+        rows = data["rows"]
+        metrics = payload["step"].get("metrics", case["output"].get("metrics", []) if isinstance(case["output"], dict) else [])
+        if not metrics:
+            metrics = [k for k, v in rows[0].items() if isinstance(v, (int, float))] if rows else []
+        dimensions = [k for k in rows[0] if k not in metrics] if rows else []
+        complete = all(all(row.get(m) is not None for m in metrics) for row in rows)
+        requirement = {"requirement_id": "contract", "metrics": metrics, "dimensions": dimensions,
+                       "grain": "contract", "scope": {}, "filters": [], "completeness": "available",
+                       "time_ranges": {m: {"start": "2025-01-01", "end": "2025-12-31"} for m in metrics}}
+        # 缺列样本只能以明确的未知值进入分析，不能冒充零值或完整数据。
+        for row in rows:
+            for metric in metrics:
+                row.setdefault(metric, None)
+        dataset = {"request_key": "contract", "source_id": "contract", "source_version": "1",
+                   "population": "sample" if data.get("is_mock") else "business", "coverage": requirement,
+                   "complete": complete, "truncated": False, "units": {m: None for m in metrics}, "data": data}
+        use = {"requirement_id": "contract", "dataset_id": "contract", "metrics": metrics, "selection_filters": []}
+        template["steps"] = [{**payload["step"], "metrics": metrics, "query_params": {}}]
+        state["datasets"] = {"contract": dataset}
+        if name == "analyze_step":
+            state["step_plan"] = {"step_id": payload["step"]["step_id"], "requirements": [requirement],
+                                  "data_uses": [use], "queries": [], "conclusion_step_ids": [],
+                                  "clarification_answers": [], "reason": "离线契约样本"}
+        else:
+            template["analysis_purpose"] = payload["analysis_purpose"]
+            state.update(step_index=1, summary="已完成总结", step_results=[{
+                "step_id": payload["step"]["step_id"], "data_uses": [use], "conclusion_step_ids": [],
+                "conclusion": payload["conclusion"],
+            }])
     before = deepcopy(state)
     module = MODULES[name]
     with patch.object(module, "get_llm", return_value=model), \
@@ -78,6 +100,9 @@ def run_case(case, model, prompt):
 def examples():
     for name in NODES:
         prompt = load_prompt(name)
+        if name == "recommend_charts":
+            assert "JSON Schema:" in prompt
+            continue
         headings = re.findall(r"^## (\d{2}) (\w+)", prompt, re.M)
         assert headings == list(zip(
             [f"{i:02}" for i in range(1, 9)],
@@ -89,6 +114,12 @@ def examples():
             yield {"node": name, "id": f"example-{index + 1}", **json.loads(block)}
 
 
+def structured_output(case):
+    if case["node"] == "recommend_charts":
+        return {"recommendations": [{**case["output"], "candidate_id": "data-1"}]}
+    return case["output"]
+
+
 def test_prompt_contracts():
     held_out = json.loads((ROOT / "tests/prompt_cases.json").read_text(encoding="utf-8"))
     cases = [*examples(), *held_out]
@@ -96,9 +127,9 @@ def test_prompt_contracts():
         name, expected = case["node"], case["output"]
         model = Mock()
         if name in ("resolve_slots", "recommend_charts"):
-            schema = SlotExtraction if name == "resolve_slots" else ChartDecision
-            schema.model_validate(expected)
-            model.with_structured_output.return_value.invoke.return_value = expected
+            schema = SlotExtraction if name == "resolve_slots" else ChartDecisions
+            schema.model_validate(structured_output(case))
+            model.with_structured_output.return_value.invoke.return_value = structured_output(case)
         else:
             assert isinstance(expected, str) and expected.strip()
             model.stream_events.return_value = Mock(text=iter([expected]), output=AIMessage(content=expected))
@@ -112,11 +143,27 @@ def test_prompt_contracts():
             actual = update["summary"] if name == "summarize_scenario" else update["step_results"][-1]["conclusion"]
             assert actual == expected
         assert [m[0] for m in messages] == ["system", "human"]
-        assert json.loads(messages[1][1]) == case["input"], case["id"]
+        actual_input = json.loads(messages[1][1])
+        if name in ("resolve_slots", "summarize_scenario"):
+            assert actual_input == case["input"], case["id"]
+        elif name == "analyze_step":
+            assert actual_input["step"] == case["input"]["step"]
+            assert actual_input["datasets"][0]["rows"] == case["input"].get("current_data", case["input"].get("datasets", [{}])[0])["rows"]
+            assert actual_input["conclusions"] == []
+        else:
+            assert actual_input["candidates"][0]["step_id"] == case["input"]["step"]["step_id"]
+            assert actual_input["candidates"][0]["conclusion"] == case["input"]["conclusion"]
         if name == "recommend_charts":
             system, schema_text = messages[0][1].split("JSON Schema:\n")
-            assert json.loads(schema_text) == ChartDecision.model_json_schema()
-            assert update["chart_recommendations"] == [expected]
+            assert json.loads(schema_text) == ChartDecisions.model_json_schema()
+            actual = update["chart_recommendations"][0]
+            assert actual["step_id"] == expected["step_id"]
+            if not expected["recommended"]:
+                assert not actual["recommended"]
+            # 图表推荐另经 Python 安全校验；未声明时间轴的旧样本不应画折线。
+            if actual["recommended"]:
+                assert actual["chart_type"] == expected["chart_type"]
+                assert actual["data"]
         else:
             assert messages[0][1] == load_prompt(name)
         if "expected_slots" in case:
@@ -185,7 +232,7 @@ def test_live_recording():
     for case in cases:
         model = Mock(model_name="offline-test")
         model.model_copy.return_value = model
-        model.with_structured_output.return_value.invoke.return_value = case["output"]
+        model.with_structured_output.return_value.invoke.return_value = structured_output(case)
         if isinstance(case["output"], str):
             model.stream_events.return_value = Mock(
                 text=iter([case["output"]]), output=AIMessage(content=case["output"]),
@@ -200,7 +247,7 @@ def test_live_recording():
             model.root_client.with_options.assert_called_once_with(timeout=30, max_retries=0)
             assert len(record["prompt_sha256"]) == 64
             if case["node"] in ("resolve_slots", "recommend_charts"):
-                assert record["raw_output"] == case["output"]
+                assert record["raw_output"] == structured_output(case)
     print("Evaluation recording (Mock only): PASS")
 
 

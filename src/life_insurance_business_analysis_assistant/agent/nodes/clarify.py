@@ -25,10 +25,10 @@ def clarify(state: AgentState) -> ClarifyUpdate | SlotReplyUpdate:
     """按追问类型接收场景编码或槽位补充文本。"""
     clarification = state["clarification"]
     # 进入槽位补充追问
-    if clarification and clarification["kind"] == "slot_completion":
+    if clarification and clarification["kind"] in ("slot_completion", "step_clarification"):
         prompt = clarification["prompt"]
         while True:
-            reply = interrupt({"kind": "slot_completion", "prompt": prompt,
+            reply = interrupt({"kind": clarification["kind"], "prompt": prompt,
                                "slot_issues": clarification["slot_issues"]})
             if isinstance(reply, str) and reply.strip():
                 update = SlotReplyUpdate(user_reply=reply.strip())
@@ -41,8 +41,8 @@ def clarify(state: AgentState) -> ClarifyUpdate | SlotReplyUpdate:
         raise ValueError("clarify 需要有效的追问类型")
     # 进入场景选择追问
     candidates = state["candidates"]
-    if len(candidates) < 2:
-        raise ValueError("场景选择追问需要至少两个候选")
+    if not candidates:
+        raise ValueError("场景确认需要至少一个候选")
     valid_ids = {candidate["scenario_id"] for candidate in candidates}
     prompt = clarification["prompt"]
     while True:

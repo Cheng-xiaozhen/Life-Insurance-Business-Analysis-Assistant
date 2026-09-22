@@ -27,18 +27,36 @@ export function AnalysisInterruptView({
       {interrupt.value.kind === "scenario_selection" ? (
         <div className="mt-3 flex flex-wrap gap-2">
           {interrupt.value.candidates?.map((candidate) => (
-            <Button
+            <div
               key={candidate.scenario_id}
-              disabled={disabled}
-              onClick={() => onReply(candidate.scenario_id)}
+              className="flex flex-col gap-1"
             >
-              {candidate.name}
-            </Button>
+              <Button
+                disabled={disabled}
+                onClick={() => onReply(candidate.scenario_id)}
+              >
+                {candidate.name}
+                {typeof candidate.confidence === "number" &&
+                  Number.isFinite(candidate.confidence) && (
+                    <span>
+                      {" "}
+                      · 匹配 {Math.round(candidate.confidence * 100)}%
+                    </span>
+                  )}
+              </Button>
+              {candidate.reason && (
+                <p className="text-muted-foreground max-w-xs text-sm">
+                  {candidate.reason}
+                </p>
+              )}
+            </div>
           ))}
         </div>
       ) : (
         <p className="text-muted-foreground mt-2 text-sm">
-          请在下方输入框补充参数。
+          {interrupt.value.kind === "step_clarification"
+            ? "请在下方输入框回答当前步骤的问题。"
+            : "请在下方输入框补充参数。"}
         </p>
       )}
     </section>

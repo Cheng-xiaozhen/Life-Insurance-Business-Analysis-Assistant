@@ -56,4 +56,5 @@ assert.ok(
     "请用非空文本补充参数。",
   ),
 );
+assert.ok(render("step_clarification").includes("请在下方输入框回答当前步骤的问题。"));
 console.log("Analysis interrupt rendering checks passed.");

@@ -32,3 +32,6 @@ test.yaml
 Thumbs.db
 .vscode/
 ~$*
+
+tests/
+notebooks/

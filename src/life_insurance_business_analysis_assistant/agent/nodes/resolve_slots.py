@@ -79,7 +79,7 @@ def resolve_slots(state: AgentState) -> ResolveSlotsUpdate:
         if name in issues and issues[name]["reason"] != "missing":
             slots.pop(name, None)
             continue
-        if name not in slots and "default" in definition:
+        if name not in slots and "default" in definition and not definition["required"]:
             slots[name] = definition["default"]
         if name not in slots:
             if definition["required"]:
