@@ -1,11 +1,14 @@
 """单次智能问答及其补参过程的状态契约。
 
-所有字段采用覆盖更新，不配置追加 reducer。TypedDict 只描述结构，
+业务字段采用覆盖更新；聊天消息和执行进度使用各自的 reducer。TypedDict 只描述结构，
 模板、槽位及外部数据的运行时校验由对应节点负责。
 模型、查询客户端、场景目录和 checkpoint 配置不属于业务 State。
 """
 
-from typing import Literal, NotRequired, TypeAlias
+from typing import Annotated, Literal, NotRequired, TypeAlias
+
+from langchain_core.messages import AnyMessage
+from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict, TypeAliasType
 
 
@@ -205,6 +208,24 @@ class AgentState(TypedDict):
     step_results: list[StepResult]  # 按执行顺序保存的已完成步骤结果。
     summary: str | None  # 最后的完整场景总结；None 表示尚未生成。
     chart_recommendations: list[ChartRecommendation] | None  # None 未执行；完成后包含推荐或不推荐决策。
+
+
+def merge_execution(previous: dict, update: dict) -> dict:
+    return {**previous, **update}
+
+
+class ChatState(AgentState):
+    # 在AgentState基础上添加messages字段，用于聊天能力
+    messages: Annotated[list[AnyMessage], add_messages]
+    analysis_id: str
+    last_question: str
+    status: str
+    execution: Annotated[dict[str, dict], merge_execution]
+
+
+class StudioInput(TypedDict):
+    question: NotRequired[str | None]
+    messages: NotRequired[Annotated[list[AnyMessage], add_messages]]
 
 
 def create_initial_state(question: str) -> AgentState:

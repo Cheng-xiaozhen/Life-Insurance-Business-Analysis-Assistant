@@ -9,7 +9,8 @@ from langchain_deepseek import ChatDeepSeek
 from langgraph.graph import START, END, StateGraph
 from langgraph.checkpoint.memory import InMemorySaver
 
-from life_insurance_business_analysis_assistant.agent.chat import AnalysisStream, ChatState, chat_message, stream_text
+from life_insurance_business_analysis_assistant.agent.chat import AnalysisStream, chat_message, stream_text
+from life_insurance_business_analysis_assistant.agent.state import ChatState
 from life_insurance_business_analysis_assistant.agent.nodes.recommend_charts import ChartDecision
 
 

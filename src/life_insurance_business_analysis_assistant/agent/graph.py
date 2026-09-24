@@ -16,11 +16,13 @@ from life_insurance_business_analysis_assistant.agent.nodes.match_scenario impor
 from life_insurance_business_analysis_assistant.agent.nodes.resolve_slots import resolve_slots
 from life_insurance_business_analysis_assistant.agent.nodes.summarize_scenario import summarize_scenario
 from life_insurance_business_analysis_assistant.agent.nodes.recommend_charts import recommend_charts
-from life_insurance_business_analysis_assistant.agent.state import AgentState
+from life_insurance_business_analysis_assistant.agent.state import AgentState, ChatState, StudioInput
 from life_insurance_business_analysis_assistant.data_coverage import pending_queries
-from life_insurance_business_analysis_assistant.agent.chat import (
-    ChatState, StudioInput, chart_message, no_match, prepare_chat, present_clarification, track_execution,
-)
+from life_insurance_business_analysis_assistant.agent.chat import track_execution
+from life_insurance_business_analysis_assistant.agent.nodes.no_match import no_match
+from life_insurance_business_analysis_assistant.agent.nodes.prepare_chat import prepare_chat
+from life_insurance_business_analysis_assistant.agent.nodes.present_clarification import present_clarification
+from life_insurance_business_analysis_assistant.agent.nodes.present_charts import present_charts
 
 
 def route_match(state: AgentState) -> Literal["no_match", "confirm"]:
@@ -93,7 +95,7 @@ def build_chat_graph(*, studio_context: AgentContext):
         
     graph.add_node("prepare_chat", prepare_chat)
     for name, node in (("present_clarification", present_clarification), ("no_match", no_match),
-                       ("present_charts", chart_message)):
+                       ("present_charts", present_charts)):
         graph.add_node(name, track_execution(name, lambda state, config, node=node: node(state)))
     graph.add_edge(START, "prepare_chat")
     graph.add_edge("prepare_chat", "match_scenario")
