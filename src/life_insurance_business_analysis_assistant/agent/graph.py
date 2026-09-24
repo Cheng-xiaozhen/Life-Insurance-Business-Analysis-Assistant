@@ -24,6 +24,9 @@ from life_insurance_business_analysis_assistant.agent.chat import (
 
 
 def route_match(state: AgentState) -> Literal["no_match", "confirm"]:
+    """
+    判断场景匹配结果，如果没有匹配到候选场景，则返回 "no_match"；如果匹配到了候选场景，则返回 "confirm"。
+    """
     return "confirm" if state["candidates"] else "no_match"
 
 
@@ -56,43 +59,57 @@ def route_fetch(state: AgentState) -> Literal["fetch_step_data", "analyze_step"]
     return "fetch_step_data" if pending_queries(state) else "analyze_step"
 
 
-def build_graph(*, studio_context: AgentContext | None = None):
-    """
-    创建分析图
-    studio_context 是一个可选的运行上下文，根据是否提供该参数，函数支持两种构建方式：
-    1. 不提供 studio_context：创建一个普通分析图，不支持聊天能力。
-    2. 提供 studio_context：创建一个支持聊天能力的分析图
-
-    """
-    graph = StateGraph(ChatState if studio_context is not None else AgentState, context_schema=AgentContext if studio_context is None else None,
-                       input_schema=StudioInput if studio_context is not None else AgentState)
-    node_state = ChatState if studio_context is not None else AgentState
+def build_analysis_graph():
+    """创建普通分析图：调用时通过 context 传入 AgentContext。"""
+    graph = StateGraph(AgentState, context_schema=AgentContext, input_schema=AgentState)
     for name, node in (("match_scenario", match_scenario), ("load_template", load_template),
+                       ("resolve_slots", resolve_slots), ("clarify", clarify),
+                       ("plan_step", plan_step), ("fetch_step_data", fetch_step_data),
+                       ("analyze_step", analyze_step), ("summarize_scenario", summarize_scenario),
+                       ("recommend_charts", recommend_charts)):
+        graph.add_node(name, node, input_schema=AgentState)
+    graph.add_edge(START, "match_scenario")
+    _add_analysis_edges(graph, clarify_target="clarify", no_match_target=END, charts_target=END)
+    # ponytail: POC 状态仅存内存，需要跨进程恢复时换持久化 checkpointer。
+    return graph.compile(checkpointer=InMemorySaver())
+
+
+def build_chat_graph(*, studio_context: AgentContext):
+    """创建聊天图：构建时绑定上下文，接受 StudioInput，维护 ChatState。"""
+    graph = StateGraph(ChatState, input_schema=StudioInput) # ChatAgent内部完整状态；StudioInput外部输入，可以提交question或messages
+    for name, node in (("match_scenario",  match_scenario), ("load_template", load_template),
                        ("fetch_step_data", fetch_step_data), ("plan_step", plan_step)):
-        graph.add_node(name, node if studio_context is None else track_execution(
-            name, lambda state, config, node=node: node(state, Runtime(context=studio_context))), input_schema=node_state)
-    graph.add_node("resolve_slots", resolve_slots if studio_context is None else track_execution(
-        "resolve_slots", lambda state, config: resolve_slots(state)), input_schema=node_state)
+        graph.add_node(name, track_execution(
+            name, lambda state, config, node=node: node(state, Runtime(context=studio_context))),
+            input_schema=ChatState)
+        
+    for name, node in (("resolve_slots", resolve_slots), ("clarify", clarify)):
+        graph.add_node(name, track_execution(name, lambda state, config, node=node: node(state)),
+                       input_schema=ChatState)
+        
     for name, node in (("analyze_step", analyze_step),
                        ("summarize_scenario", summarize_scenario), ("recommend_charts", recommend_charts)):
-        graph.add_node(name, node if studio_context is None else track_execution(name, node), input_schema=node_state)
-    graph.add_node("clarify", clarify if studio_context is None else track_execution(
-        "clarify", lambda state, config: clarify(state)), input_schema=node_state)
-    if studio_context is not None:
-        graph.add_node("prepare_chat", prepare_chat)
-        for name, node in (("present_clarification", present_clarification), ("no_match", no_match),
-                           ("present_charts", chart_message)):
-            graph.add_node(name, track_execution(name, lambda state, config, node=node: node(state)))
-        graph.add_edge(START, "prepare_chat")
-        graph.add_edge("prepare_chat", "match_scenario")
-        graph.add_edge("present_clarification", "clarify")
-        graph.add_edge("no_match", END)
-        graph.add_edge("present_charts", END)
-    else:
-        graph.add_edge(START, "match_scenario")
-    clarify_target = "present_clarification" if studio_context is not None else "clarify"
+        graph.add_node(name, track_execution(name, node), input_schema=ChatState)
+        
+    graph.add_node("prepare_chat", prepare_chat)
+    for name, node in (("present_clarification", present_clarification), ("no_match", no_match),
+                       ("present_charts", chart_message)):
+        graph.add_node(name, track_execution(name, lambda state, config, node=node: node(state)))
+    graph.add_edge(START, "prepare_chat")
+    graph.add_edge("prepare_chat", "match_scenario")
+    graph.add_edge("present_clarification", "clarify")
+    graph.add_edge("no_match", END)
+    graph.add_edge("present_charts", END)
+    _add_analysis_edges(graph, clarify_target="present_clarification",
+                        no_match_target="no_match", charts_target="present_charts")
+    # Studio 的检查点由 Agent Server 提供，不能额外创建本地 saver。
+    return graph.compile()
+
+
+def _add_analysis_edges(graph: StateGraph, *, clarify_target: str, no_match_target: str, charts_target: str):
+    """两种入口共用业务路线，追问和结束位置由各入口指定。"""
     graph.add_conditional_edges("match_scenario", route_match, {
-        "no_match": "no_match" if studio_context is not None else END,
+        "no_match": no_match_target,
         "confirm": clarify_target,
     })
     graph.add_conditional_edges("clarify", route_clarify)
@@ -106,7 +123,4 @@ def build_graph(*, studio_context: AgentContext | None = None):
         "plan_step": "plan_step", "complete": "summarize_scenario",
     })
     graph.add_edge("summarize_scenario", "recommend_charts")
-    graph.add_edge("recommend_charts", "present_charts" if studio_context is not None else END)
-    # ponytail: POC 状态仅存内存，需要跨进程恢复时换持久化 checkpointer。
-    # Studio 的检查点由 Agent Server 提供，不能额外创建本地 saver。
-    return graph.compile(checkpointer=InMemorySaver() if studio_context is None else None)
+    graph.add_edge("recommend_charts", charts_target)

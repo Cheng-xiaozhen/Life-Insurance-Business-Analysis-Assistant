@@ -9,7 +9,7 @@ from langgraph.types import Command
 from omegaconf import OmegaConf
 from life_insurance_business_analysis_assistant.scenario_store import read_scenarios
 
-from life_insurance_business_analysis_assistant.agent.graph import build_graph, route_analysis
+from life_insurance_business_analysis_assistant.agent.graph import build_analysis_graph, route_analysis
 from life_insurance_business_analysis_assistant.agent.state import create_initial_state
 from life_insurance_business_analysis_assistant.data_query import DataQueryError
 from workflow_support import TEMPLATE, context, models, patched_models, payload
@@ -34,7 +34,7 @@ def test_analysis_loop():
                     item["grain"] = "system"
                 return intent
             planner.side_effect = plan
-            graph = build_graph()
+            graph = build_analysis_graph()
             config = {"configurable": {"thread_id": f"loop-{count}"}, "recursion_limit": 200}
             with patched_models(mock):
                 graph.invoke(create_initial_state("2026年8月个险全系统标保"), config, context=ctx)
@@ -52,7 +52,7 @@ def test_analysis_loop():
                 raise AssertionError("越界不能当作完成")
     for failure_node in ("fetch_step_data", "summarize_scenario", "recommend_charts"):
         ctx, mock = context(), models()
-        graph = build_graph()
+        graph = build_analysis_graph()
         config = {"configurable": {"thread_id": failure_node}, "recursion_limit": 100}
         if failure_node == "fetch_step_data":
             # 第一步分成两个独立需求，第二项失败不能丢掉第一项成功查询。

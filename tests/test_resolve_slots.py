@@ -11,7 +11,7 @@ from langgraph.runtime import Runtime
 from langgraph.types import Command
 
 from life_insurance_business_analysis_assistant.agent.context import AgentContext, load_scenario_catalog
-from life_insurance_business_analysis_assistant.agent.graph import build_graph
+from life_insurance_business_analysis_assistant.agent.graph import build_analysis_graph
 from life_insurance_business_analysis_assistant.agent.nodes.load_template import load_template
 from life_insurance_business_analysis_assistant.agent.nodes.resolve_slots import resolve_slots
 from life_insurance_business_analysis_assistant.agent.state import create_initial_state

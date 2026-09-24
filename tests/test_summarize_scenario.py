@@ -12,7 +12,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 
 from life_insurance_business_analysis_assistant.agent.context import AgentContext, load_scenario_catalog
-from life_insurance_business_analysis_assistant.agent.graph import build_graph
+from life_insurance_business_analysis_assistant.agent.graph import build_analysis_graph
 from life_insurance_business_analysis_assistant.agent.nodes.load_template import load_template
 from life_insurance_business_analysis_assistant.agent.nodes.summarize_scenario import summarize_scenario
 from life_insurance_business_analysis_assistant.agent.state import AgentState, create_initial_state

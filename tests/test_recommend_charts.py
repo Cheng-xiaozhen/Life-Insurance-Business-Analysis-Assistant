@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from langgraph.types import Command
 
-from life_insurance_business_analysis_assistant.agent.graph import build_graph
+from life_insurance_business_analysis_assistant.agent.graph import build_analysis_graph
 from life_insurance_business_analysis_assistant.agent.nodes.recommend_charts import (
     ChartDecision, ChartDecisions, assemble_chart, chart_candidates, recommend_charts,
 )
@@ -15,7 +15,7 @@ from workflow_support import context, models, patched_models, payload
 
 def test_recommend_charts():
     ctx, mock = context(), models()
-    graph = build_graph()
+    graph = build_analysis_graph()
     config = {"configurable": {"thread_id": "charts"}, "recursion_limit": 100}
     with patched_models(mock):
         graph.invoke(create_initial_state("2026年8月个险全系统标保"), config, context=ctx)

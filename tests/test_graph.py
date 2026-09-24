@@ -2,14 +2,14 @@
 
 from langgraph.types import Command
 
-from life_insurance_business_analysis_assistant.agent.graph import build_graph
+from life_insurance_business_analysis_assistant.agent.graph import build_analysis_graph
 from life_insurance_business_analysis_assistant.agent.state import create_initial_state
 from workflow_support import context, models, patched_models
 
 
 def test_graph():
     ctx, mock = context(), models()
-    graph = build_graph()
+    graph = build_analysis_graph()
     configs = [{"configurable": {"thread_id": name}, "recursion_limit": 100} for name in ("a", "b")]
     with patched_models(mock):
         for config in configs:

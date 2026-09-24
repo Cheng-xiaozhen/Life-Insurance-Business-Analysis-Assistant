@@ -77,6 +77,16 @@ uv run python -B tests/test_workflow_integration.py
 
 ## 工作流与数据契约（第三阶段）
 
+### 报告模板管理
+
+打开 `/report-templates` 可加载、新增和编辑报告模板，文件保存在
+`config/templates/Report/<报告编码>.yaml`。仅支持新格式：基本信息、章节板块（含子板块及分析步骤）、写作风格与格式要求，均使用中文字段名；步骤序号按列表顺序从 1 生成。
+报告编码以字母或数字开头，仅含字母、数字、下划线和连字符，最长 100 字符，不能使用系统保留文件名。
+修改编码会重命名文件；重复编码不会覆盖已有模板。保存失败保留页面中的编辑内容。
+Next 通过项目 `.venv` 中的 Python 读写 YAML，可用 `REPORT_PYTHON` 和 `REPORT_TEMPLATE_DIR` 覆盖 Python 路径和目录。
+页面不再读取或自动迁移浏览器中的旧模拟数据。目录中的旧格式文件需手动删除后加载。
+启动 Next 后，在 `agent-chat-ui` 运行 `node scripts/check-report-templates.mjs` 验证，测试仅写临时目录。
+
 ### 场景模板管理
 
 打开 `/scenarios` 可加载、新增和编辑模板。每个场景保存在

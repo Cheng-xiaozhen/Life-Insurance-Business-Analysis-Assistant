@@ -40,6 +40,10 @@ import {
 } from "../ui/tooltip";
 import { AnalysisInterruptView } from "./analysis-interrupt";
 import { ExecutionPane } from "./execution-pane";
+import {
+  ReportTemplatePicker,
+  type ReportChoice,
+} from "./report-template-picker";
 import { ReportDownload } from "./report-download";
 import { getAnalysisInterrupt } from "@/lib/agent-inbox-interrupt";
 import {
@@ -116,6 +120,7 @@ function OpenGitHubRepo() {
 
 export function Thread() {
   const searchParams = useSearchParams();
+  const reportsHref = `/report-templates?${searchParams.toString()}`;
   const scenariosHref = `/scenarios?${searchParams.toString()}`;
   const [artifactContext, setArtifactContext] = useArtifactContext();
   const [artifactOpen, closeArtifact] = useArtifactOpen();
@@ -130,6 +135,9 @@ export function Thread() {
     parseAsBoolean.withDefault(false),
   );
   const [input, setInput] = useState("");
+  const [reportTemplate, setReportTemplate] = useState<ReportChoice | null>(
+    null,
+  );
   const [firstTokenReceived, setFirstTokenReceived] = useState(false);
   const isLargeScreen = useMediaQuery("(min-width: 1024px)");
 
@@ -175,6 +183,7 @@ export function Thread() {
 
   const setThreadId = (id: string | null) => {
     _setThreadId(id);
+    setReportTemplate(null);
 
     // close artifact and reset artifact context
     closeArtifact();
@@ -237,6 +246,10 @@ export function Thread() {
       if (analysisInterrupt.value.kind === "scenario_selection") return;
       void resumeAnalysis(input);
       setInput("");
+      return;
+    }
+    if (reportTemplate) {
+      toast.info("报告生成流程尚未接通，已保留所选模板和问题。");
       return;
     }
     setFirstTokenReceived(false);
@@ -416,6 +429,12 @@ export function Thread() {
                 >
                   <Link href={scenariosHref}>分析场景管理</Link>
                 </Button>
+                <Button
+                  asChild
+                  variant="ghost"
+                >
+                  <Link href={reportsHref}>报告模板管理</Link>
+                </Button>
                 <OpenGitHubRepo />
               </div>
             </div>
@@ -466,6 +485,12 @@ export function Thread() {
                   variant="ghost"
                 >
                   <Link href={scenariosHref}>分析场景管理</Link>
+                </Button>
+                <Button
+                  asChild
+                  variant="ghost"
+                >
+                  <Link href={reportsHref}>报告模板管理</Link>
                 </Button>
                 <div className="flex items-center">
                   <OpenGitHubRepo />
@@ -618,6 +643,24 @@ export function Thread() {
                       onSubmit={handleSubmit}
                       className="mx-auto grid max-w-3xl grid-rows-[1fr_auto] gap-2"
                     >
+                      <div className="min-w-0 px-3.5 pt-3.5">
+                        <ReportTemplatePicker
+                          value={reportTemplate}
+                          onChange={setReportTemplate}
+                          disabled={
+                            isLoading ||
+                            stream.isThreadLoading ||
+                            hasRunError ||
+                            hasPendingRun ||
+                            !!analysisInterrupt
+                          }
+                        />
+                        {reportTemplate && (
+                          <p className="text-muted-foreground mt-2 text-xs">
+                            报告生成流程暂未接通；所选模板和问题会保留在当前输入区。
+                          </p>
+                        )}
+                      </div>
                       <textarea
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
@@ -646,7 +689,9 @@ export function Thread() {
                             ? "请回答当前步骤的问题"
                             : analysisInterrupt
                               ? "请输入需要补充的参数，例如：2026年8月"
-                              : "请输入完整分析问题（每次新问题独立分析）"
+                              : reportTemplate
+                                ? "请输入报告需求，例如：分析2026年8月个险渠道经营情况"
+                                : "请输入完整分析问题（每次新问题独立分析）"
                         }
                         className="field-sizing-content resize-none border-none bg-transparent p-3.5 pb-0 shadow-none ring-0 outline-none focus:ring-0 focus:outline-none"
                       />
@@ -690,7 +735,9 @@ export function Thread() {
                               !input.trim()
                             }
                           >
-                            Send
+                            {reportTemplate && !analysisInterrupt
+                              ? "生成报告"
+                              : "Send"}
                           </Button>
                         )}
                       </div>

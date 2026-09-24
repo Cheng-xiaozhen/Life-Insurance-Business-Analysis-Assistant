@@ -3,7 +3,7 @@
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
-from life_insurance_business_analysis_assistant.agent.graph import build_graph
+from life_insurance_business_analysis_assistant.agent.graph import build_analysis_graph, build_chat_graph
 from life_insurance_business_analysis_assistant.agent.state import create_initial_state
 from workflow_support import context, models, patched_models, payload, SLOTS
 
@@ -20,7 +20,7 @@ def test_workflow_integration(studio=False, chat=False):
     ]
     for name, question, replies, query_count in cases:
         ctx, mock = context(), models()
-        graph = build_graph(studio_context=ctx) if studio else build_graph()
+        graph = build_chat_graph(studio_context=ctx) if studio else build_analysis_graph()
         if studio:
             graph.get_input_jsonschema()
             graph.get_output_jsonschema()

@@ -6,13 +6,13 @@ from unittest import TestCase
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
-from life_insurance_business_analysis_assistant.agent.graph import build_graph
+from life_insurance_business_analysis_assistant.agent.graph import build_chat_graph
 from workflow_support import context, models, patched_models, payload
 
 
 def test_chat():
     ctx, mock = context(), models()
-    graph = build_graph(studio_context=ctx).builder.compile(checkpointer=InMemorySaver())
+    graph = build_chat_graph(studio_context=ctx).builder.compile(checkpointer=InMemorySaver())
     config = {"configurable": {"thread_id": "chat-retry"}, "recursion_limit": 100}
     original = mock["analyze_step"].stream_events.side_effect
     failed = False
