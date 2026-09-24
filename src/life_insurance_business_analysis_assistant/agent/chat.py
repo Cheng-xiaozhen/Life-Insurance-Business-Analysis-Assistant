@@ -19,8 +19,15 @@ logger = logging.getLogger(__name__)
 
 def chat_message(state: ChatState, suffix: str, text: str, **metadata):
     # reducer 将字典转换为 AIMessage；固定 ID 让 values 覆盖 custom 流的临时消息。
-    return {"type": "ai", "content": text, "id": f"{state['analysis_id']}:{suffix}",
-            "additional_kwargs": {"analysis": True, "analysis_id": state["analysis_id"], **metadata}}
+    return {
+        "type": "ai",
+        "content": text,
+        "id": f"{state['analysis_id']}:{suffix}",
+        "additional_kwargs": {
+            "analysis": True,
+            "analysis_id": state["analysis_id"],
+              **metadata}
+                              }
 
 
 def track_execution(name, node):
@@ -32,7 +39,7 @@ def track_execution(name, node):
         step = template["steps"][index] if template and index < len(template["steps"]) else None
         labels = {
             "match_scenario": "识别分析场景", "load_template": "加载分析方案",
-            "resolve_slots": "解析分析参数", "present_clarification": "请求补充信息",
+            "present_clarification": "请求补充信息",
             "clarify": "等待补充信息", "no_match": "未匹配到分析场景",
             "fetch_step_data": "查询数据", "analyze_step": "生成步骤分析",
             "plan_step": "规划步骤执行",

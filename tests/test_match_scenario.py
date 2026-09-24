@@ -21,22 +21,23 @@ from life_insurance_business_analysis_assistant.agent.state import AgentState, c
 def check_match_scenario():
     path = Path(__file__).resolve().parents[1] / "config/templates/Scenario"
     catalog = load_scenario_catalog(path)
-    context = AgentContext(catalog)
+    context = AgentContext(catalog, path)
     runtime = Runtime(context=context)
-    for question, ids, scores in [
-        ("人力情况", [], []),
-        ("标保达成率，标保达成率", ["standard_premium_review"], [3.0]),
-        ("价值达成率和标保", ["standard_premium_review", "value_review"], [1.0, 3.0]),
-        ("价值和标保", ["standard_premium_review", "value_review"], [1.0, 1.0]),
+    for question, ids in [
+        ("人力情况", []),
+        ("标保达成率，标保达成率", ["standard_premium_review"]),
+        ("价值达成率和标保", ["standard_premium_review", "value_review"]),
+        ("价值和标保", ["standard_premium_review", "value_review"]),
     ]:
         state = create_initial_state(question)
         state["scenario_id"] = "stale"
-        state["clarification"] = {"kind": "slot_completion", "prompt": "旧追问", "slot_issues": []}
+        state["clarification"] = {"kind": "step_clarification", "prompt": "旧追问"}
         before = deepcopy(state)
-        result = match_scenario(state, runtime)
+        with patch("life_insurance_business_analysis_assistant.agent.context.read_scenarios", side_effect=AssertionError("重复读取目录")):
+            result = match_scenario(state, runtime)
         assert state == before
         assert [c["scenario_id"] for c in result["candidates"]] == ids
-        assert [c["score"] for c in result["candidates"]] == scores
+        assert all("score" not in c for c in result["candidates"])
         assert result["scenario_id"] is None
         assert (result["clarification"] is not None) == bool(ids)
 

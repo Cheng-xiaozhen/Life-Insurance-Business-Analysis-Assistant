@@ -191,7 +191,7 @@ try {
   expect((await post(original, original.code)).status).toBe(200);
   expect(
     await readFile(path.join(directory, `${original.code}.yaml`), "utf8"),
-  ).toContain("输入参数:");
+  ).not.toContain("输入参数:");
   failLoad = true;
   await load();
   await expect(

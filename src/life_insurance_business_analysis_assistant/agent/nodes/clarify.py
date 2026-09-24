@@ -1,4 +1,4 @@
-"""暂停工作流，接收场景选择或槽位补充回答。"""
+"""暂停工作流"""
 
 from typing import TypedDict
 
@@ -9,36 +9,48 @@ from life_insurance_business_analysis_assistant.agent.state import AgentState
 
 
 class ClarifyUpdate(TypedDict):
-    """选择成功后写入场景编码并清空追问。"""
-
+    """
+    场景确认，选择成功后写入场景编码并清空追问。
+    """
     scenario_id: str
     clarification: None
 
 
-class SlotReplyUpdate(TypedDict):
-    """保留追问上下文，只把新回答交给槽位解析节点。"""
-
+class StepReplyUpdate(TypedDict):
+    """
+    步骤澄清，保留追问上下文，把新回答交给步骤规划节点。
+    """
     user_reply: str
 
 
-def clarify(state: AgentState) -> ClarifyUpdate | SlotReplyUpdate:
-    """按追问类型接收场景编码或槽位补充文本。"""
-    clarification = state["clarification"]
-    # 进入槽位补充追问
-    if clarification and clarification["kind"] in ("slot_completion", "step_clarification"):
-        prompt = clarification["prompt"]
+def clarify(state: AgentState) -> ClarifyUpdate | StepReplyUpdate:
+    """
+    调用interrupt()暂停工作流，等待用户回答。
+    Graph被Command恢复后，把回答转换成后续节点可以消费的State更新。
+    """
+    clarification = state["clarification"] # 读取当前追问状态
+    # 进入参数补充追问
+    if clarification and clarification["kind"] == "step_clarification":
+        prompt = clarification["prompt"] # 读取追问提示
         while True:
-            reply = interrupt({"kind": clarification["kind"], "prompt": prompt,
-                               "slot_issues": clarification["slot_issues"]})
+            # interrupt会保存当前Graph Checkpoint，产生GraphInterrupt，停止本次Graph run，把interrupt payload暴露给调用方
+            reply = interrupt({
+                "kind": clarification["kind"],
+                "prompt": prompt,
+                "slot_issues": clarification["slot_issues"]})
+
             if isinstance(reply, str) and reply.strip():
-                update = SlotReplyUpdate(user_reply=reply.strip())
-                if state.get("analysis_id"):
-                    update.update(messages=[HumanMessage(content=reply.strip(), id=f"{state['messages'][-1].id}:reply")],
-                                  status="正在解析补充参数")
+                update = StepReplyUpdate(user_reply=reply.strip()) # 把用户回答
+                if state.get("analysis_id"): # 判断是不是Chat Graph
+                    update.update(
+                        messages=[HumanMessage(content=reply.strip(), id=f"{state['messages'][-1].id}:reply")],
+                        status="正在规划分析步骤") # Chat模式下追加HumanMessage
                 return update
             prompt = "请用非空文本补充参数。"
+
     if clarification is None or clarification["kind"] != "scenario_selection":
         raise ValueError("clarify 需要有效的追问类型")
+    
     # 进入场景选择追问
     candidates = state["candidates"]
     if not candidates:
@@ -53,10 +65,12 @@ def clarify(state: AgentState) -> ClarifyUpdate | SlotReplyUpdate:
             "candidates": candidates,
         })
         if isinstance(reply, str) and reply in valid_ids:
-            update = ClarifyUpdate(scenario_id=reply, clarification=None)
-            if state.get("analysis_id"):
+            update = ClarifyUpdate(scenario_id=reply, clarification=None) # 清空clarification，用于后续节点判断
+            if state.get("analysis_id"): # 判断是不是Chat Graph
                 name = next(item["name"] for item in candidates if item["scenario_id"] == reply)
-                update.update(messages=[HumanMessage(content=f"选择场景：{name}", id=f"{state['messages'][-1].id}:reply")],
-                              status="正在加载分析模板")
+                update.update(
+                    messages=[HumanMessage(content=f"选择场景：{name}", id=f"{state['messages'][-1].id}:reply")],
+                    status="正在加载分析模板"
+                    ) # Chat模式下追加HumanMessage
             return update
         prompt = "选择无效，请提交本次候选中的场景编码。"

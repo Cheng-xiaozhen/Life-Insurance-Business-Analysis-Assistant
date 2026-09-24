@@ -93,7 +93,9 @@ def _check_references(text: str, slots: dict[str, SlotDefinition], location: str
 def load_template(
     state: AgentState, runtime: Runtime[AgentContext]
 ) -> LoadTemplateUpdate:
-    """按编码加载唯一场景，校验成功后一次性返回 template 更新。"""
+    """
+    按编码加载唯一场景，校验成功后一次性返回 template 更新。
+    """
     scenario_id = _text(state["scenario_id"], "scenario_id")
     path = runtime.context.template_path
     if path is None:

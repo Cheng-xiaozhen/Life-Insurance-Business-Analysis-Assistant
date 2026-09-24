@@ -13,7 +13,6 @@ from life_insurance_business_analysis_assistant.agent.nodes.fetch_step_data impo
 from life_insurance_business_analysis_assistant.agent.nodes.plan_step import plan_step
 from life_insurance_business_analysis_assistant.agent.nodes.load_template import load_template
 from life_insurance_business_analysis_assistant.agent.nodes.match_scenario import match_scenario
-from life_insurance_business_analysis_assistant.agent.nodes.resolve_slots import resolve_slots
 from life_insurance_business_analysis_assistant.agent.nodes.summarize_scenario import summarize_scenario
 from life_insurance_business_analysis_assistant.agent.nodes.recommend_charts import recommend_charts
 from life_insurance_business_analysis_assistant.agent.state import AgentState, ChatState, StudioInput
@@ -32,15 +31,13 @@ def route_match(state: AgentState) -> Literal["no_match", "confirm"]:
     return "confirm" if state["candidates"] else "no_match"
 
 
-def route_clarify(state: AgentState) -> Literal["load_template", "resolve_slots", "plan_step"]:
+def route_clarify(state: AgentState) -> Literal["load_template", "plan_step"]:
     clarification = state["clarification"]
     if clarification is None:
         return "load_template"
-    return "plan_step" if clarification["kind"] == "step_clarification" else "resolve_slots"
-
-
-def route_slots(state: AgentState) -> Literal["clarify", "complete"]:
-    return "clarify" if state["clarification"] is not None else "complete"
+    if clarification["kind"] != "step_clarification":
+        raise ValueError("场景确认后仅支持步骤澄清")
+    return "plan_step"
 
 
 def route_analysis(state: AgentState) -> Literal["plan_step", "complete"]:
@@ -65,7 +62,7 @@ def build_analysis_graph():
     """创建普通分析图：调用时通过 context 传入 AgentContext。"""
     graph = StateGraph(AgentState, context_schema=AgentContext, input_schema=AgentState)
     for name, node in (("match_scenario", match_scenario), ("load_template", load_template),
-                       ("resolve_slots", resolve_slots), ("clarify", clarify),
+                       ("clarify", clarify),
                        ("plan_step", plan_step), ("fetch_step_data", fetch_step_data),
                        ("analyze_step", analyze_step), ("summarize_scenario", summarize_scenario),
                        ("recommend_charts", recommend_charts)):
@@ -85,9 +82,8 @@ def build_chat_graph(*, studio_context: AgentContext):
             name, lambda state, config, node=node: node(state, Runtime(context=studio_context))),
             input_schema=ChatState)
         
-    for name, node in (("resolve_slots", resolve_slots), ("clarify", clarify)):
-        graph.add_node(name, track_execution(name, lambda state, config, node=node: node(state)),
-                       input_schema=ChatState)
+    graph.add_node("clarify", track_execution("clarify", lambda state, config: clarify(state)),
+                   input_schema=ChatState)
         
     for name, node in (("analyze_step", analyze_step),
                        ("summarize_scenario", summarize_scenario), ("recommend_charts", recommend_charts)):
@@ -115,8 +111,7 @@ def _add_analysis_edges(graph: StateGraph, *, clarify_target: str, no_match_targ
         "confirm": clarify_target,
     })
     graph.add_conditional_edges("clarify", route_clarify)
-    graph.add_edge("load_template", "resolve_slots")
-    graph.add_conditional_edges("resolve_slots", route_slots, {"clarify": clarify_target, "complete": "plan_step"})
+    graph.add_edge("load_template", "plan_step")
     graph.add_conditional_edges("plan_step", route_plan, {
         "clarify": clarify_target, "fetch_step_data": "fetch_step_data", "analyze_step": "analyze_step",
     })

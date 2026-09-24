@@ -30,14 +30,18 @@ def test_load_template():
         template = update["template"]
         assert template["scenario_id"] == scenario_id
         assert [s["step_id"] for s in template["steps"]] == list(range(1, count + 1))
-        assert template["slot_definitions"]["月份"]["minimum"] == 1
-        assert set(template["slot_definitions"]) == {"年份", "月份"}
-        assert "default" not in template["slot_definitions"]["年份"]
+        assert template["slot_definitions"] == {}
         assert template["steps"][0]["query_params"] == {}
         assert state == before
         json.dumps(template, ensure_ascii=False)
 
     original = read_scenarios(path)[0]
+    assert "输入参数" not in original
+    # 旧格式校验仍保留；取数流程将在后续调整。
+    original["输入参数"] = {
+        "年份": {"说明": "分析年份", "类型": "integer", "必填": True},
+        "月份": {"说明": "分析月份", "类型": "integer", "必填": True, "最小值": 1, "最大值": 12},
+    }
     state = create_initial_state("标保")
     state["scenario_id"] = "standard_premium_review"
     with TemporaryDirectory() as directory:

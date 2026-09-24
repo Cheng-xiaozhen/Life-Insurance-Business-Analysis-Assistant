@@ -5,8 +5,10 @@ from life_insurance_business_analysis_assistant.agent.state import ChatState
 
 
 def present_clarification(state: ChatState):
+    """
+    纯粹的Chat UI展示节点，负责把业务节点的Clarification转化为聊天消息，供前端展示。
+    """
     clarification = state["clarification"]
-    # 每次补参使用最新已提交的回复 ID，重复执行同一节点仍覆盖同一条消息。
-    latest = state["messages"][-1].id
-    return {"messages": [chat_message(state, f"clarify:{latest}", clarification["prompt"])],
+    latest_message_id = state["messages"][-1].id # 拿到当前聊天记录中最新一条消息的ID
+    return {"messages": [chat_message(state, f"clarify:{latest_message_id}", clarification["prompt"])],
             "status": "等待补充信息"}

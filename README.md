@@ -92,16 +92,16 @@ Next 通过项目 `.venv` 中的 Python 读写 YAML，可用 `REPORT_PYTHON` 和
 打开 `/scenarios` 可加载、新增和编辑模板。每个场景保存在
 `config/templates/Scenario/<场景编码>.yaml`，使用中文字段名；分析思路包含步骤序号、
 分析步骤、指标列表和可选分析模式。编码仅允许字母、数字、下划线和连字符，修改编码会重命名文件。
-已有模板的输入参数及步骤取数参数会保留。保存使用临时文件替换，失败时页面保留编辑内容。
+场景模板已删除输入参数声明；步骤取数参数会保留，取数流程将在后续调整。保存使用临时文件替换，失败时页面保留编辑内容。
 
 Next 服务通过项目 `.venv` 中的 Python 和现有 PyYAML 读写文件，无需启动模型服务。
 非默认环境可设置服务端 `SCENARIO_PYTHON`；`SCENARIO_TEMPLATE_DIR` 可覆盖管理页面的模板目录（默认与 Agent 共用上述目录）。
-页面不再读取浏览器中的旧模拟数据。Agent 在每次新分析时重新加载目录；已开始的分析仍使用其模板快照。
+页面不再读取浏览器中的旧模拟数据。Agent 初始化时加载场景目录，匹配节点复用该目录；目录信息更新后需重启 Agent。已开始的分析仍使用其模板快照。
 离线读写及页面回归：启动 Next 后，在 `agent-chat-ui` 运行 `node scripts/check-scenarios.mjs`，测试仅写临时目录。
 
-`match_scenario → clarify → load_template → resolve_slots → plan_step → fetch_step_data → analyze_step`
+`match_scenario → clarify → load_template → plan_step → fetch_step_data → analyze_step`
 按模板顺序循环，最后 `summarize_scenario → recommend_charts`；聊天入口另有消息初始化、追问展示和最终图表消息节点。
-槽位不完整时返回 `clarify`；Planner 需要澄清时也经该节点恢复到 `plan_step`。
+已移除槽位填充节点；Planner 需要步骤澄清时经 `clarify` 恢复到 `plan_step`。
 无需新数据时跳过取数；多份缺口查询每次只执行一份，各自保存检查点。
 图表推荐与数值数据组装在同一节点完成，前端使用消息中的 `additional_kwargs.charts` 展示历史图表。
 
@@ -109,7 +109,7 @@ Planner 使用结构化 LLM 输出识别自然语言步骤的指标、粒度、�
 Python 校验指标目录、槽位绑定、时间范围、筛选范围、数据完整性和来源快照，并计算复用与补查。
 业务模板无需增加执行策略；已有指标和取数参数仍有效，无数据步骤可使用空指标列表并引用前序结论。
 `datasets` 保存数据一次，步骤结果保存引用和结论；当前步骤的 `step_plan` 在分析成功后清空。
-必填槽位不采用默认值，模型不能自行改变用户确认的查询范围。
+取数逻辑暂时保留原实现，仍依赖明确的查询年月；新的参数来源将在后续调整。
 
 取数函数现接收 `QueryRequest`，返回 `DatasetRecord`，不再接收旧的 `(metrics, params)`。
 真实问数 API 接入时，在 `AgentContext` 同时注入 `query_data` 和 `query_capabilities`：

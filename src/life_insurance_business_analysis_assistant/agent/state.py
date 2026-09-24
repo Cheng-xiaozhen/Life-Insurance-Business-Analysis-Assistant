@@ -21,11 +21,10 @@ StepData: TypeAlias = dict[str, JSONValue]
 
 
 class ScenarioCandidate(TypedDict):
-    """语义匹配得到的候选场景，附带关键词规则分数。"""
+    """语义匹配得到的候选场景。"""
 
     scenario_id: str  # 场景唯一编码。
     name: str  # 场景展示名称。
-    score: float  # 规则匹配分数。
     confidence: float  # 模型评估值，不是经过校准的正确概率。
     reason: str
 
@@ -201,7 +200,7 @@ class AgentState(TypedDict):
     template: ScenarioTemplate | None  # 已校验的模板快照；None 表示尚未加载。
     slots: dict[str, SlotValue]  # 已通过校验的槽位值，包含有效默认值。
     clarification: Clarification | None  # 当前追问；None 表示没有待解决的追问。
-    user_reply: str | None  # 最新槽位回复，resolve_slots 处理后清空。
+    user_reply: str | None  # 用户补充回复
     step_index: int  # 零基列表索引，与模板 step_id 区分。
     step_plan: StepPlan | None
     datasets: dict[str, DatasetRecord]

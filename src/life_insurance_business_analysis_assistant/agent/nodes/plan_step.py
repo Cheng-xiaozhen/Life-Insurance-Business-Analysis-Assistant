@@ -63,10 +63,7 @@ def bind_step_params(state: AgentState) -> dict:
 def plan_step(state: AgentState, runtime: Runtime[AgentContext]) -> dict:
     step = current_step(state)
     if state["clarification"] and state["clarification"]["kind"] != "step_clarification":
-        raise ValueError("步骤规划前必须完成场景确认与槽位补齐")
-    template = state["template"]
-    if any(d["required"] and name not in state["slots"] for name, d in template["slot_definitions"].items()):
-        raise ValueError("步骤规划缺少必填槽位")
+        raise ValueError("步骤规划前必须完成场景确认")
     previous = state["step_plan"]
     if previous and previous["step_id"] != step["step_id"]:
         raise ValueError("执行计划与当前步骤不匹配")
