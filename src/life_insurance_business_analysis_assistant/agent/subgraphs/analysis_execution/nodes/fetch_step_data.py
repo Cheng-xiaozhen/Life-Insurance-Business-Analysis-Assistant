@@ -2,14 +2,14 @@
 import logging
 from langgraph.runtime import Runtime
 from life_insurance_business_analysis_assistant.agent.context import AgentContext
-from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.state import AnalysisExecutionState, current_step
+from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.state import AnalysisExecutionState, get_current_step
 from life_insurance_business_analysis_assistant.data_query import DataQueryError, DataQueryRequest, validate_result
 
 logger = logging.getLogger(__name__)
 
 
 def build_request(state: AnalysisExecutionState) -> DataQueryRequest:
-    step, template = current_step(state), state["template"]
+    step, template = get_current_step(state), state["template"]
     return DataQueryRequest.model_validate({
         "scenarioInfo": {key: template[key] for key in (
             "scenario_id", "name", "channel_type", "time_dimension", "analysis_object", "analysis_purpose"
@@ -36,9 +36,12 @@ def fetch_step_data(state: AnalysisExecutionState, runtime: Runtime[AgentContext
     """
     查询当前步骤所需的数据。
     """
-    step = current_step(state) # 获得当前步骤信息
+    step = state["current_step"]
+    if step is None:
+        raise ValueError("必须先加载当前分析步骤")
+    
     if not step["metrics"]:
-        raise ValueError("取数需要已确认且指标非空的当前步骤")
+        raise ValueError("当前分析步骤没有关联指标，无需查询数据")
     request = build_request(state) # 构建请求对象,包含场景信息、当前步骤文本和当前步骤指标列表
     try:
         ids, _ = saved_step_data(state, request) # 检查该步骤以前是不是查成功过

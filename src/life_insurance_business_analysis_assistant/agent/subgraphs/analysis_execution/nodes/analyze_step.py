@@ -7,7 +7,7 @@ from langchain_core.runnables import RunnableConfig
 
 from life_insurance_business_analysis_assistant.agent.llm import get_llm
 from life_insurance_business_analysis_assistant.agent.chat import stream_text
-from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.state import AnalysisExecutionState, StepResult, current_step
+from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.state import AnalysisExecutionState, StepResult, get_current_step
 from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.nodes.fetch_step_data import build_request, saved_step_data
 from life_insurance_business_analysis_assistant.prompt_loader import load_prompt
 
@@ -21,7 +21,7 @@ class AnalyzeStepUpdate(TypedDict):
 
 def analyze_step(state: AnalysisExecutionState, config: RunnableConfig) -> AnalyzeStepUpdate:
     """普通步骤读取自己的数据，无指标步骤读取已完成结论。"""
-    step = current_step(state)
+    step = get_current_step(state)
     template, index = state["template"], state["step_index"]
     if [r["step_id"] for r in state["step_results"]] != [s["step_id"] for s in template["steps"][:index]]:
         raise ValueError("前序步骤结果缺失、重复或顺序错误")

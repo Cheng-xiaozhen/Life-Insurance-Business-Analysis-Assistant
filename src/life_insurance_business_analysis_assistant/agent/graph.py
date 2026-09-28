@@ -54,7 +54,9 @@ def build_chat_graph(*, studio_context: AgentContext):
     """
     创建聊天图：构建时绑定上下文，接受 StudioInput，维护 ChatState。
     """
-    graph = StateGraph(ChatState, input_schema=StudioInput) # ChatAgent内部完整状态；StudioInput外部输入，可以提交question或messages
+    graph = StateGraph(
+        ChatState,
+        input_schema=StudioInput) # ChatAgent内部完整状态；StudioInput外部输入，可以提交question或messages
 
     for name, node in (("match_scenario",  match_scenario), ("load_template", load_template)):
         graph.add_node(name, track_execution(

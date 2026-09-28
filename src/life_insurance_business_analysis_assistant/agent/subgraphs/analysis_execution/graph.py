@@ -13,6 +13,9 @@ from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_executi
 
 
 def route_current_step(state: AnalysisExecutionState) -> Literal["fetch_step_data", "analyze_step"]:
+    """
+    根据当前步骤是否包含mertics，决定下一个节点是 fetch_step_data 还是 analyze_step。
+    """
     return "fetch_step_data" if state["current_step"]["metrics"] else "analyze_step"
 
 
@@ -24,8 +27,12 @@ def route_analysis(state: AnalysisExecutionState) -> Literal["load_step", "final
 
 
 def build_analysis_execution_graph(*, chat=False):
-    graph = StateGraph(AnalysisExecutionState, context_schema=AgentContext,
-                       input_schema=AnalysisExecutionInput, output_schema=AnalysisExecutionOutput)
+    graph = StateGraph(
+        AnalysisExecutionState,
+        context_schema=AgentContext,
+        input_schema=AnalysisExecutionInput,
+        output_schema=AnalysisExecutionOutput)
+    
     graph.add_node("initialize_subgraph", initialize_subgraph)
     graph.add_node("load_step", load_step)
     if chat:
