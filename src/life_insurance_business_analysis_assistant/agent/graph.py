@@ -51,8 +51,11 @@ def build_analysis_graph():
 
 
 def build_chat_graph(*, studio_context: AgentContext):
-    """创建聊天图：构建时绑定上下文，接受 StudioInput，维护 ChatState。"""
+    """
+    创建聊天图：构建时绑定上下文，接受 StudioInput，维护 ChatState。
+    """
     graph = StateGraph(ChatState, input_schema=StudioInput) # ChatAgent内部完整状态；StudioInput外部输入，可以提交question或messages
+
     for name, node in (("match_scenario",  match_scenario), ("load_template", load_template)):
         graph.add_node(name, track_execution(
             name, lambda state, config, node=node: node(state, Runtime(context=studio_context))),
@@ -63,6 +66,7 @@ def build_chat_graph(*, studio_context: AgentContext):
         
     graph.add_node("analysis_execution", chat_analysis_execution(
         build_analysis_execution_graph(chat=True), studio_context), input_schema=ChatState)
+    
     for name, node in (("summarize_scenario", summarize_scenario), ("recommend_charts", recommend_charts)):
         graph.add_node(name, track_execution(name, node), input_schema=ChatState)
         
@@ -70,6 +74,7 @@ def build_chat_graph(*, studio_context: AgentContext):
     for name, node in (("present_clarification", present_clarification), ("no_match", no_match),
                        ("present_charts", present_charts)):
         graph.add_node(name, track_execution(name, lambda state, config, node=node: node(state)))
+        
     graph.add_edge(START, "prepare_chat")
     graph.add_edge("prepare_chat", "match_scenario")
     graph.add_edge("present_clarification", "clarify")

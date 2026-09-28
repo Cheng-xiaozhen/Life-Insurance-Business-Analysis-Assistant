@@ -74,9 +74,10 @@ class AnalysisExecutionOutput(TypedDict):
 | `agent/contracts.py`（新增） | 共享模板和 DatasetRecord 定义，内容保持原契约 |
 | `agent/subgraphs/__init__.py`、`analysis_execution/__init__.py`（新增） | 子图包入口 |
 | `agent/subgraphs/analysis_execution/state.py`（新增） | 五个子图/结果契约及 current_step 读取；StepResult 删除旧结论引用字段 |
-| `agent/subgraphs/analysis_execution/graph.py`（新增） | 初始化、加载、最终校验节点及两条路由；编译子图，不创建独立 saver |
-| `agent/subgraphs/analysis_execution/fetch_step_data.py`（迁移） | 原 `agent/nodes/fetch_step_data.py` 移入子图，读取 current_step，保留查询与幂等校验 |
-| `agent/subgraphs/analysis_execution/analyze_step.py`（迁移） | 原分析节点移入子图，成功后提交结论与游标，移除聊天状态更新 |
+| `agent/subgraphs/analysis_execution/graph.py`（新增） | 仅保留两条路由及 Graph 编排；编译子图，不创建独立 saver |
+| `agent/subgraphs/analysis_execution/nodes/initialize_subgraph.py`、`load_step.py`、`finalize_subgraph.py`（新增） | 分别负责初始化、加载校验当前步骤、组装最终结果；每个节点独立一个文件 |
+| `agent/subgraphs/analysis_execution/nodes/fetch_step_data.py`（迁移） | 原 `agent/nodes/fetch_step_data.py` 移入子图，读取 current_step，保留查询与幂等校验 |
+| `agent/subgraphs/analysis_execution/nodes/analyze_step.py`（迁移） | 原分析节点移入子图，成功后提交结论与游标，移除聊天状态更新 |
 | `agent/graph.py` | 删除内部循环节点/路由，主链改成 load_template → analysis_execution → summarize_scenario |
 | `agent/state.py` | 内部执行字段替换为 analysis_result，更新初始化 |
 | `agent/nodes/load_template.py` | 仅调整共享类型导入；加载和校验逻辑不变 |

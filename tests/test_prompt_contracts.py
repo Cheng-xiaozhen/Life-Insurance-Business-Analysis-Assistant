@@ -28,7 +28,7 @@ from life_insurance_business_analysis_assistant.prompt_loader import load_prompt
 ROOT = Path(__file__).resolve().parents[1]
 NODES = ("analyze_step", "summarize_scenario", "recommend_charts")
 MODULES = {name: import_module(
-    f"life_insurance_business_analysis_assistant.agent.{'subgraphs.analysis_execution' if name == 'analyze_step' else 'nodes'}.{name}"
+    f"life_insurance_business_analysis_assistant.agent.{'subgraphs.analysis_execution.nodes' if name == 'analyze_step' else 'nodes'}.{name}"
 ) for name in NODES}
 
 
@@ -66,7 +66,7 @@ def run_case(case, model, prompt):
                  "notice": data.get("notice", "离线契约样本；空表或缺失值不能解释成零"),
                  "time_dimensions": data.get("time_dimensions", []), "partition_of": data.get("partition_of")}
         template["steps"] = [{**payload["step"], "metrics": metrics}]
-        from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.fetch_step_data import build_request
+        from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.nodes.fetch_step_data import build_request
         state.update(step_index=0, current_step=template["steps"][0], datasets={}, step_results=[])
         key = f"step:{payload['step']['step_id']}:table:1"
         state["datasets"] = {key: {"step_id": payload["step"]["step_id"], "request": build_request(state).model_dump(), "payload": table}}

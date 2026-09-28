@@ -3,7 +3,7 @@ from workflow_support import execution_state
 
 from copy import deepcopy
 from workflow_support import context, models, patched_models
-from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.fetch_step_data import fetch_step_data
+from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.nodes.fetch_step_data import fetch_step_data
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -13,13 +13,13 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 
 from life_insurance_business_analysis_assistant.agent.context import AgentContext
-from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.analyze_step import analyze_step
+from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.nodes.analyze_step import analyze_step
 from life_insurance_business_analysis_assistant.agent.nodes.load_template import load_template
 from life_insurance_business_analysis_assistant.agent.state import create_initial_state
 from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.state import AnalysisExecutionState
 
 
-@patch("life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.analyze_step.get_llm")
+@patch("life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.nodes.analyze_step.get_llm")
 def test_analyze_step(get_llm):
     path = Path(__file__).resolve().parents[1] / "config/templates/Scenario"
     state = create_initial_state("2026年8月个险全系统标保")

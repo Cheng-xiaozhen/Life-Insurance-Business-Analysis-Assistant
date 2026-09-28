@@ -6,7 +6,7 @@ from unittest.mock import Mock
 from langgraph.runtime import Runtime
 from life_insurance_business_analysis_assistant.agent.state import create_initial_state
 from life_insurance_business_analysis_assistant.agent.nodes.load_template import load_template
-from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.fetch_step_data import build_request
+from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.nodes.fetch_step_data import build_request
 from life_insurance_business_analysis_assistant.data_query import DataQueryRequest, DataQueryError, validate_result
 from life_insurance_business_analysis_assistant.mock_query_service import MockQueryService
 from workflow_support import context, query_fixture
