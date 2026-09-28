@@ -1,4 +1,4 @@
-"""模板驱动的智能问答：确认、补参、规划/取数/分析循环、总结和图表。"""
+"""模板驱动的智能问答：确认、确定性取数/分析循环、总结和图表。"""
 
 from typing import Literal
 
@@ -10,13 +10,11 @@ from life_insurance_business_analysis_assistant.agent.context import AgentContex
 from life_insurance_business_analysis_assistant.agent.nodes.analyze_step import analyze_step
 from life_insurance_business_analysis_assistant.agent.nodes.clarify import clarify
 from life_insurance_business_analysis_assistant.agent.nodes.fetch_step_data import fetch_step_data
-from life_insurance_business_analysis_assistant.agent.nodes.plan_step import plan_step
 from life_insurance_business_analysis_assistant.agent.nodes.load_template import load_template
 from life_insurance_business_analysis_assistant.agent.nodes.match_scenario import match_scenario
 from life_insurance_business_analysis_assistant.agent.nodes.summarize_scenario import summarize_scenario
 from life_insurance_business_analysis_assistant.agent.nodes.recommend_charts import recommend_charts
-from life_insurance_business_analysis_assistant.agent.state import AgentState, ChatState, StudioInput
-from life_insurance_business_analysis_assistant.data_coverage import pending_queries
+from life_insurance_business_analysis_assistant.agent.state import AgentState, ChatState, StudioInput, current_step
 from life_insurance_business_analysis_assistant.agent.chat import track_execution
 from life_insurance_business_analysis_assistant.agent.nodes.no_match import no_match
 from life_insurance_business_analysis_assistant.agent.nodes.prepare_chat import prepare_chat
@@ -31,31 +29,21 @@ def route_match(state: AgentState) -> Literal["no_match", "confirm"]:
     return "confirm" if state["candidates"] else "no_match"
 
 
-def route_clarify(state: AgentState) -> Literal["load_template", "plan_step"]:
-    clarification = state["clarification"]
-    if clarification is None:
-        return "load_template"
-    if clarification["kind"] != "step_clarification":
-        raise ValueError("场景确认后仅支持步骤澄清")
-    return "plan_step"
+def route_clarify(state: AgentState) -> Literal["load_template"]:
+    if state["clarification"] is not None:
+        raise ValueError("场景确认尚未完成")
+    return "load_template"
 
 
-def route_analysis(state: AgentState) -> Literal["plan_step", "complete"]:
-    """分析成功后索引已加一；等于步骤总数时才结束。"""
+def route_current_step(state: AgentState) -> Literal["fetch_step_data", "analyze_step"]:
+    return "fetch_step_data" if current_step(state)["metrics"] else "analyze_step"
+
+
+def route_analysis(state: AgentState) -> Literal["fetch_step_data", "analyze_step", "summarize_scenario"]:
     template, index = state["template"], state["step_index"]
     if template is None or type(index) is not int or not 0 <= index <= len(template["steps"]):
         raise ValueError("分析后的 step_index 超出模板范围")
-    return "plan_step" if index < len(template["steps"]) else "complete"
-
-
-def route_plan(state: AgentState) -> Literal["clarify", "fetch_step_data", "analyze_step"]:
-    if state["clarification"]:
-        return "clarify"
-    return route_fetch(state)
-
-
-def route_fetch(state: AgentState) -> Literal["fetch_step_data", "analyze_step"]:
-    return "fetch_step_data" if pending_queries(state) else "analyze_step"
+    return route_current_step(state) if index < len(template["steps"]) else "summarize_scenario"
 
 
 def build_analysis_graph():
@@ -63,7 +51,7 @@ def build_analysis_graph():
     graph = StateGraph(AgentState, context_schema=AgentContext, input_schema=AgentState)
     for name, node in (("match_scenario", match_scenario), ("load_template", load_template),
                        ("clarify", clarify),
-                       ("plan_step", plan_step), ("fetch_step_data", fetch_step_data),
+                       ("fetch_step_data", fetch_step_data),
                        ("analyze_step", analyze_step), ("summarize_scenario", summarize_scenario),
                        ("recommend_charts", recommend_charts)):
         graph.add_node(name, node, input_schema=AgentState)
@@ -77,7 +65,7 @@ def build_chat_graph(*, studio_context: AgentContext):
     """创建聊天图：构建时绑定上下文，接受 StudioInput，维护 ChatState。"""
     graph = StateGraph(ChatState, input_schema=StudioInput) # ChatAgent内部完整状态；StudioInput外部输入，可以提交question或messages
     for name, node in (("match_scenario",  match_scenario), ("load_template", load_template),
-                       ("fetch_step_data", fetch_step_data), ("plan_step", plan_step)):
+                       ("fetch_step_data", fetch_step_data)):
         graph.add_node(name, track_execution(
             name, lambda state, config, node=node: node(state, Runtime(context=studio_context))),
             input_schema=ChatState)
@@ -111,13 +99,8 @@ def _add_analysis_edges(graph: StateGraph, *, clarify_target: str, no_match_targ
         "confirm": clarify_target,
     })
     graph.add_conditional_edges("clarify", route_clarify)
-    graph.add_edge("load_template", "plan_step")
-    graph.add_conditional_edges("plan_step", route_plan, {
-        "clarify": clarify_target, "fetch_step_data": "fetch_step_data", "analyze_step": "analyze_step",
-    })
-    graph.add_conditional_edges("fetch_step_data", route_fetch)
-    graph.add_conditional_edges("analyze_step", route_analysis, {
-        "plan_step": "plan_step", "complete": "summarize_scenario",
-    })
+    graph.add_conditional_edges("load_template", route_current_step)
+    graph.add_edge("fetch_step_data", "analyze_step")
+    graph.add_conditional_edges("analyze_step", route_analysis)
     graph.add_edge("summarize_scenario", "recommend_charts")
     graph.add_edge("recommend_charts", charts_target)

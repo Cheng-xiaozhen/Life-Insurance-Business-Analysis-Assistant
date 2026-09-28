@@ -2,7 +2,6 @@
 
 from copy import deepcopy
 from workflow_support import context, models, patched_models
-from life_insurance_business_analysis_assistant.agent.nodes.plan_step import plan_step
 from life_insurance_business_analysis_assistant.agent.nodes.fetch_step_data import fetch_step_data
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -26,10 +25,8 @@ def test_analyze_step(get_llm):
     state.update(load_template(state, Runtime(context=AgentContext([], path))))
     state["step_index"] = 1
     state["slots"] = {"年份": 2026, "月份": 8, "渠道": "个险", "机构范围": "全系统"}
-    state["step_results"] = [{"step_id": 1, "data_uses": [], "conclusion_step_ids": [], "conclusion": "前序结论"}]
+    state["step_results"] = [{"step_id": 1, "dataset_ids": [], "conclusion_step_ids": [], "conclusion": "前序结论"}]
     runtime = Runtime(context=context())
-    with patched_models(models()):
-        state.update(plan_step(state, runtime))
     state.update(fetch_step_data(state, runtime))
     before = deepcopy(state)
     model = Mock()
@@ -38,12 +35,12 @@ def test_analyze_step(get_llm):
     update = analyze_step(state, {})
     prompt = model.stream_events.call_args.args[0][1][1]
     assert "前序数据" not in prompt and "前序结论" not in prompt
-    assert state["question"] in prompt and "全年标保" not in prompt
+    assert state["question"] not in prompt and "全年标保" not in prompt
     assert state == before
     assert update["step_results"][-1]["conclusion"] == "模拟数据：甲达成率80%。"
     assert update["step_results"][0] == before["step_results"][0]
-    assert update["step_index"] == 2 and update["step_plan"] is None
-    update["step_results"][-1]["data_uses"].clear()
+    assert update["step_index"] == 2
+    update["step_results"][-1]["dataset_ids"].clear()
     assert state == before
 
     def failing_stream():
@@ -73,7 +70,7 @@ def test_analyze_step(get_llm):
     output = stream.output
     assert len(tokens) > 1
     assert "".join(tokens) == output["step_results"][-1]["conclusion"]
-    assert output["step_index"] == 2 and output["step_plan"] is None
+    assert output["step_index"] == 2
     assert state == before
 
 

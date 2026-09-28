@@ -16,38 +16,9 @@ class ClarifyUpdate(TypedDict):
     clarification: None
 
 
-class StepReplyUpdate(TypedDict):
-    """
-    步骤澄清，保留追问上下文，把新回答交给步骤规划节点。
-    """
-    user_reply: str
-
-
-def clarify(state: AgentState) -> ClarifyUpdate | StepReplyUpdate:
-    """
-    调用interrupt()暂停工作流，等待用户回答。
-    Graph被Command恢复后，把回答转换成后续节点可以消费的State更新。
-    """
-    clarification = state["clarification"] # 读取当前追问状态
-    # 进入参数补充追问
-    if clarification and clarification["kind"] == "step_clarification":
-        prompt = clarification["prompt"] # 读取追问提示
-        while True:
-            # interrupt会保存当前Graph Checkpoint，产生GraphInterrupt，停止本次Graph run，把interrupt payload暴露给调用方
-            reply = interrupt({
-                "kind": clarification["kind"],
-                "prompt": prompt,
-                "slot_issues": clarification["slot_issues"]})
-
-            if isinstance(reply, str) and reply.strip():
-                update = StepReplyUpdate(user_reply=reply.strip()) # 把用户回答
-                if state.get("analysis_id"): # 判断是不是Chat Graph
-                    update.update(
-                        messages=[HumanMessage(content=reply.strip(), id=f"{state['messages'][-1].id}:reply")],
-                        status="正在规划分析步骤") # Chat模式下追加HumanMessage
-                return update
-            prompt = "请用非空文本补充参数。"
-
+def clarify(state: AgentState) -> ClarifyUpdate:
+    """等待场景选择；步骤执行不再发起查询参数澄清。"""
+    clarification = state["clarification"]
     if clarification is None or clarification["kind"] != "scenario_selection":
         raise ValueError("clarify 需要有效的追问类型")
     

@@ -10,12 +10,10 @@ from workflow_support import context, models, patched_models, payload, SLOTS
 
 def test_workflow_integration(studio=False, chat=False):
     cases = [
-        ("single", "2026年8月个险全系统标保", ["standard_premium_review"], 3),
-        ("slots", "2026年标保", ["standard_premium_review", "8月"], 3),
-        ("month_only", "标保", ["standard_premium_review", "2026年8月"], 3),
-        ("value_month_only", "价值", ["value_review", "2026年8月"], 2),
-        ("choice", "2026年8月个险全系统标保和价值", ["value_review"], 2),
-        ("both", "标保和价值", ["standard_premium_review", "2026年8月个险全系统"], 3),
+        ("single", "2026年8月个险全系统标保", ["standard_premium_review"], 5),
+        ("no_date", "标保", ["standard_premium_review"], 5),
+        ("value", "价值", ["value_review"], 3),
+        ("choice", "标保和价值", ["value_review"], 3),
         ("zero", "人力情况", [], 0),
     ]
     for name, question, replies, query_count in cases:
@@ -42,14 +40,13 @@ def test_workflow_integration(studio=False, chat=False):
             if not query_count:
                 assert result["summary"] is None
                 continue
-            assert result["slots"] == SLOTS
+            assert result["slots"] == {}
             steps = result["template"]["steps"]
             assert len(result["step_results"]) == result["step_index"] == len(steps)
-            assert result["step_plan"] is None
             assert len(result["datasets"]) == query_count
-            assert len({call.args[0]["request_key"] for call in ctx.query_data.call_args_list}) == query_count
+            assert len({call.args[0].step.step_id for call in ctx.query_data.call_args_list}) == query_count
             assert all("data" not in entry for entry in result["step_results"])
-            assert result["step_results"][1]["data_uses"][0]["dataset_id"] == result["step_results"][2]["data_uses"][0]["dataset_id"]
+            assert result["step_results"][1]["dataset_ids"] != result["step_results"][2]["dataset_ids"]
             for call in mock["analyze_step"].stream_events.call_args_list:
                 assert payload(call.args[0])["datasets"]
             assert result["summary"] == "模拟场景总结"

@@ -123,18 +123,16 @@ def load_template(
         location = f"步骤 {step_id}"
         text = _text(step.get("分析步骤"), f"{location}.分析步骤")
         _check_references(text, slots, location)
-        params = _mapping(step.get("取数参数", {}), f"{location}.取数参数")
-        for name, value in params.items():
-            if type(value) not in (str, int):
-                raise ValueError(f"{location}.取数参数.{name} 必须是字符串或整数")
-            if isinstance(value, str):
-                _text(value, f"{location}.取数参数.{name}")
-                _check_references(value, slots, f"{location}.取数参数.{name}")
+        if step.get("取数参数"):
+            raise ValueError(f"{location} 不再支持取数参数，请移除旧查询配置")
+        if "{{" in text or "}}" in text:
+            raise ValueError(f"{location} 不支持运行时槽位占位符")
         normalized = ScenarioStep(
             step_id=step_id, text=text,
             metrics=[] if step.get("指标") == [] else _texts(step.get("指标"), f"{location}.指标"),
-            query_params=dict(params),
         )
+        if len(set(normalized["metrics"])) != len(normalized["metrics"]):
+            raise ValueError(f"{location}.指标 不能重复")
         if "分析模式" in step:
             mode = step["分析模式"]
             normalized["analysis_mode"] = None if mode is None else _text(mode, f"{location}.分析模式")

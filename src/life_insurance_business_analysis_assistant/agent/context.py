@@ -7,7 +7,6 @@ from typing import TypedDict
 from life_insurance_business_analysis_assistant.scenario_store import read_scenarios
 
 from life_insurance_business_analysis_assistant.data_query import QueryData
-from life_insurance_business_analysis_assistant.agent.state import QueryCapabilities
 
 
 class ScenarioEntry(TypedDict):
@@ -24,8 +23,7 @@ class AgentContext:
 
     scenario_catalog: list[ScenarioEntry]
     template_path: str | Path | None = None  # 场景 YAML 来源，加载节点调用前提供。
-    query_data: QueryData | None = None  # 由调用方注入真实查询或 Fake，不自动回退。
-    query_capabilities: QueryCapabilities | None = None
+    query_data: QueryData | None = None  # 由调用方注入真实查询或 LLM Mock，不自动回退。
 
 
 def load_scenario_catalog(path: str | Path) -> list[ScenarioEntry]:

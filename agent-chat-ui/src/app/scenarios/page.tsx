@@ -22,9 +22,7 @@ const stepSchema = z.object({
   text: z.string().trim().min(1),
   metrics: z.array(z.string()),
   mode: z.string(),
-  queryParams: z
-    .record(z.string(), z.union([z.string(), z.number().int()]))
-    .optional(),
+
 });
 const scenarioSchema = z.object({
   code: z.string().trim().min(1),
@@ -86,11 +84,10 @@ function ScenarioEditor({
     const parsed = scenarioSchema.safeParse({
       ...Object.fromEntries(fields.map(([key]) => [key, value(key)])),
       keywords: list("keywords"),
-      steps: steps.map(({ id, queryParams }) => ({
+      steps: steps.map(({ id }) => ({
         text: value(`text-${id}`),
         metrics: list(`metrics-${id}`),
         mode: value(`mode-${id}`),
-        queryParams,
       })),
     });
     if (!parsed.success) {

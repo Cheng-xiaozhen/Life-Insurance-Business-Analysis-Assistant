@@ -16,7 +16,13 @@ class Step(BaseModel):
     text: str = Field(min_length=1)
     metrics: list[str]
     mode: str
-    queryParams: dict[str, str | int] = Field(default_factory=dict)
+
+    @field_validator("metrics")
+    @classmethod
+    def valid_metrics(cls, values):
+        if any(not value.strip() for value in values) or len(set(values)) != len(values):
+            raise ValueError("指标不能为空或重复；不取数步骤使用空列表")
+        return values
 
 
 class Scenario(BaseModel):
@@ -62,7 +68,7 @@ def read_scenarios(path: str | Path) -> list[dict]:
 def to_frontend(raw: dict) -> dict:
     value = {key: raw.get(label, [] if key == "keywords" else "") for key, label in FIELDS.items()}
     value["steps"] = [{"text": step["分析步骤"], "metrics": step.get("指标", []),
-                       "mode": step.get("分析模式") or "", "queryParams": step.get("取数参数", {})}
+                       "mode": step.get("分析模式") or ""}
                       for step in sorted(raw["分析思路"], key=lambda step: step["步骤序号"])]
     return Scenario.model_validate(value).model_dump()
 
@@ -97,8 +103,7 @@ def save_scenario(directory: Path, payload: dict) -> dict:
         old = read_scenarios(source)[0] if source else {}
         raw = {**old, **{label: getattr(scenario, key) for key, label in FIELDS.items()}}
         raw["分析思路"] = [{"步骤序号": index, "分析步骤": step.text,
-                           "指标": step.metrics, **({"分析模式": step.mode} if step.mode else {}),
-                           **({"取数参数": step.queryParams} if step.queryParams else {})}
+                           "指标": step.metrics, **({"分析模式": step.mode} if step.mode else {})}
                           for index, step in enumerate(scenario.steps, 1)]
         with NamedTemporaryFile(mode="w", encoding="utf-8", dir=directory, suffix=".tmp", delete=False) as stream:
             temporary = Path(stream.name)

@@ -33,5 +33,7 @@ Thumbs.db
 .vscode/
 ~$*
 
-tests/
+tests/*
+!tests/workflow_support.py
+!tests/test_data_query.py
 notebooks/

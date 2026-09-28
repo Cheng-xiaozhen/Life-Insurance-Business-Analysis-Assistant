@@ -1,40 +1,59 @@
-"""一次执行一个缺口查询；每份成功响应独立进入检查点。"""
-
+"""每步一次查询；全部响应校验成功后原子保存，不推进步骤。"""
 import logging
-
 from langgraph.runtime import Runtime
-
 from life_insurance_business_analysis_assistant.agent.context import AgentContext
 from life_insurance_business_analysis_assistant.agent.state import AgentState, current_step
-from life_insurance_business_analysis_assistant.data_coverage import make_request, pending_queries, validate_dataset
-from life_insurance_business_analysis_assistant.data_query import DataQueryError
+from life_insurance_business_analysis_assistant.data_query import DataQueryError, DataQueryRequest, validate_result
 
 logger = logging.getLogger(__name__)
 
 
+def build_request(state: AgentState) -> DataQueryRequest:
+    step, template = current_step(state), state["template"]
+    return DataQueryRequest.model_validate({
+        "scenario": {key: template[key] for key in (
+            "scenario_id", "name", "channel_type", "time_dimension", "analysis_object", "analysis_purpose"
+        )},
+        "step": {"step_id": step["step_id"], "text": step["text"]},
+        "metrics": list(step["metrics"]),
+    })
+
+
+def saved_step_data(state: AgentState, request: DataQueryRequest) -> tuple[list[str], list[dict]]:
+    records = [(key, record) for key, record in state["datasets"].items()
+               if record["step_id"] == request.step.step_id]
+    if not records:
+        return [], []
+    by_id = dict(records)
+    ids = [f"step:{request.step.step_id}:table:{i}" for i in range(1, len(records) + 1)]
+    if set(ids) != set(by_id) or any(record["request"] != request.model_dump() for _, record in records):
+        raise ValueError("已保存的数据与当前步骤请求不一致")
+    result = validate_result({"datasets": [by_id[key]["payload"] for key in ids]}, request)
+    return ids, [table.model_dump() for table in result.datasets]
+
+
 def fetch_step_data(state: AgentState, runtime: Runtime[AgentContext]) -> dict:
     step = current_step(state)
-    plan = state["step_plan"]
-    if state["clarification"] or plan is None or plan["step_id"] != step["step_id"]:
-        raise ValueError("取数需要已确认的当前步骤计划")
-    pending = pending_queries(state)
-    if not pending:
-        return {}
-    query = runtime.context.query_data
-    if query is None:
-        raise DataQueryError("未配置数据查询函数")
-    request = pending[0]
-    logger.info("step_id=%s query=%s metrics=%s", step["step_id"], request["request_key"], request["requirement"]["metrics"])
+    if state["clarification"] is not None or not step["metrics"]:
+        raise ValueError("取数需要已确认且指标非空的当前步骤")
+    request = build_request(state)
     try:
-        capabilities = runtime.context.query_capabilities
-        if capabilities is None or make_request(request["requirement"], capabilities) != request:
-            raise ValueError("数据源配置已变化，当前查询计划不可继续执行")
-        data = validate_dataset(query(request), request)
-        for metric in request["requirement"]["metrics"]:
-            unit = capabilities["metrics"][metric]["unit"]
-            if unit is not None and data["units"][metric] != unit:
-                raise ValueError(f"查询响应指标单位不一致：{metric}")
+        ids, _ = saved_step_data(state, request)
+        if ids:
+            return {}
+        query = runtime.context.query_data
+        if query is None:
+            raise DataQueryError("未配置数据查询函数")
+        result = validate_result(query(request.model_copy(deep=True)), request)
+        records = {
+            f"step:{step['step_id']}:table:{index}": {
+                "step_id": step["step_id"], "request": request.model_dump(), "payload": table.model_dump(),
+            }
+            for index, table in enumerate(result.datasets, 1)
+        }
+        if records.keys() & state["datasets"].keys():
+            raise ValueError("数据集编号冲突")
     except Exception as error:
-        logger.exception("查询失败 step_id=%s query=%s", step["step_id"], request["request_key"])
-        raise DataQueryError(f"查询失败或响应不满足需求：{request['request_key'][:12]}") from error
-    return {"datasets": {**state["datasets"], request["request_key"]: data}}
+        logger.exception("查询失败 step_id=%s", step["step_id"])
+        raise DataQueryError(f"步骤 {step['step_id']} 查询失败或响应不满足契约") from error
+    return {"datasets": {**state["datasets"], **records}}

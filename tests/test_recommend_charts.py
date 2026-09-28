@@ -21,14 +21,14 @@ def test_recommend_charts():
         graph.invoke(create_initial_state("2026年8月个险全系统标保"), config, context=ctx)
         state = graph.invoke(Command(resume="standard_premium_review"), config, context=ctx)
     candidates = chart_candidates(state)
-    assert len(candidates) == 3  # 第2/3、第4/5步的重复数据候选去重。
+    assert len(candidates) == 5  # 每个步骤独立查询，不跨步骤推断复用。
     candidate = next(c for c in candidates if c["step_id"] == 2)
     decision = ChartDecision(recommended=True, chart_type="bar", step_id=2, candidate_id=candidate["candidate_id"],
                              dimensions=["机构"], metrics=["标保达成率"], reason="比较模拟机构", description="使用样例数据")
     before = deepcopy(state)
     assembled = assemble_chart(decision, candidate)
     assert assembled["recommended"] and assembled["units"] == {"标保达成率": "%"}
-    assert assembled["data"][0]["标保达成率"] == float(candidate["data"]["rows"][0]["标保达成率"].removesuffix("%"))
+    assert assembled["data"][0]["标保达成率"] == float(candidate["data"]["rows"][0]["标保达成率"])
     assert "模拟" in assembled["description"]
     for changes in ({"chart_type": "pie"}, {"chart_type": "line"}, {"chart_type": "scatter"}, {"dimensions": []}):
         result = assemble_chart(decision.model_copy(update=changes), candidate)

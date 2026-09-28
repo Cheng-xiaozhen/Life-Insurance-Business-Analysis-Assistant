@@ -92,61 +92,36 @@ Next 通过项目 `.venv` 中的 Python 读写 YAML，可用 `REPORT_PYTHON` 和
 打开 `/scenarios` 可加载、新增和编辑模板。每个场景保存在
 `config/templates/Scenario/<场景编码>.yaml`，使用中文字段名；分析思路包含步骤序号、
 分析步骤、指标列表和可选分析模式。编码仅允许字母、数字、下划线和连字符，修改编码会重命名文件。
-场景模板已删除输入参数声明；步骤取数参数会保留，取数流程将在后续调整。保存使用临时文件替换，失败时页面保留编辑内容。
+场景模板不声明输入参数或步骤取数参数；指标为空的步骤直接分析。保存使用临时文件替换，失败时页面保留编辑内容。
 
 Next 服务通过项目 `.venv` 中的 Python 和现有 PyYAML 读写文件，无需启动模型服务。
 非默认环境可设置服务端 `SCENARIO_PYTHON`；`SCENARIO_TEMPLATE_DIR` 可覆盖管理页面的模板目录（默认与 Agent 共用上述目录）。
 页面不再读取浏览器中的旧模拟数据。Agent 初始化时加载场景目录，匹配节点复用该目录；目录信息更新后需重启 Agent。已开始的分析仍使用其模板快照。
 离线读写及页面回归：启动 Next 后，在 `agent-chat-ui` 运行 `node scripts/check-scenarios.mjs`，测试仅写临时目录。
 
-`match_scenario → clarify → load_template → plan_step → fetch_step_data → analyze_step`
-按模板顺序循环，最后 `summarize_scenario → recommend_charts`；聊天入口另有消息初始化、追问展示和最终图表消息节点。
-已移除槽位填充节点；Planner 需要步骤澄清时经 `clarify` 恢复到 `plan_step`。
-无需新数据时跳过取数；多份缺口查询每次只执行一份，各自保存检查点。
-图表推荐与数值数据组装在同一节点完成，前端使用消息中的 `additional_kwargs.charts` 展示历史图表。
+`match_scenario → clarify → load_template → 按 metrics 路由 → fetch_step_data / analyze_step`
 
-Planner 使用结构化 LLM 输出识别自然语言步骤的指标、粒度、相对月份、筛选和前序结论引用。
-Python 校验指标目录、槽位绑定、时间范围、筛选范围、数据完整性和来源快照，并计算复用与补查。
-业务模板无需增加执行策略；已有指标和取数参数仍有效，无数据步骤可使用空指标列表并引用前序结论。
-`datasets` 保存数据一次，步骤结果保存引用和结论；当前步骤的 `step_plan` 在分析成功后清空。
-取数逻辑暂时保留原实现，仍依赖明确的查询年月；新的参数来源将在后续调整。
+指标非空时每步调用一次 Query Service，然后分析；指标为空时直接分析前序结论。步骤完成后循环，最后执行 `summarize_scenario → recommend_charts`。不再执行查询规划、步骤澄清或跨步骤覆盖复用。
 
-取数函数现接收 `QueryRequest`，返回 `DatasetRecord`，不再接收旧的 `(metrics, params)`。
-真实问数 API 接入时，在 `AgentContext` 同时注入 `query_data` 和 `query_capabilities`：
+`AgentContext.query_data` 接收严格的 `DataQueryRequest`（scenario、step、metrics），返回 `DataQueryResult`（一张或多张结构化表）。slots、原始问题、推导条件不传入；当前接口不能保证按用户指定年月或机构查询，分析与总结不凭用户问题给数据补写口径。
 
-- `QueryCapabilities` 声明指标口径（月度/年累计）、单位、可用粒度及实体键。
-- `DatasetRecord` 必须提供实际覆盖范围、来源、快照、完整性、截断标记、单位及 `data.rows`，不能照抄请求来宣称满足范围。
-- `source_version` 表示可复现的数据快照，不是接口版本；无法保证稳定快照时填 `None`，Python 不跨数据集补查拼接。
-- 全量需求不接受截断或缺失指标的响应；完整空结果允许，但不代表查询失败。查询异常直接抛出。
-- 只在同一来源、快照、总体、粒度、时间和范围下复用；范围按精确匹配处理，可对完整数据应用显式筛选，不推断机构上下级关系或做隐式聚合。
+Studio 默认注入 LLM `MockQueryService`，需要配置模型密钥。数值由 LLM 生成，Pydantic 校验结构，代码强制标明模拟来源。不同步骤为独立样例，不保证同一业务快照；没有硬编码数据回退。未来替换为 HTTP 适配器即可，Graph 不变。
 
-当前仍只有项目原有报告样例适配器，没有真实问数 API；样例不能用于其他月份、渠道或范围。
-百分数转换仅供绘图（例如 `61.8%` 转为 `61.8`，单位 `%`）。
-折线图需要数据源显式声明 `time_dimensions` 和 ISO 日期；饼图需要 `partition_of` 声明真实整体份额。
-Word 导出保持现有文字报告能力，暂不嵌入图表图片。
+数据按 `step:2:table:1` 保存，结论只保存 dataset_ids 和 conclusion_step_ids。图表继续使用已有数据，由 Python 组装数值；百分比使用数值和 `%` 单位。折线要求 time_dimensions，饼图要求 partition_of。Word 导出保持现有文字报告能力。
 
-恢复必须使用同一个 `thread_id`：追问用 `Command(resume=...)`，失败重试用空输入 `None`。
-已成功保存的查询和步骤不会重跑；若外部服务已响应但进程在检查点保存前退出，请求仍可能重发，生产适配器应使用 `request_key` 做幂等/去重。
-仅支持当前状态结构和单场景 YAML 文件，不提供旧模板或旧检查点迁移；结构不兼容的历史分析需新建会话。
-普通 Python 图默认 `InMemorySaver`；部署入口依赖 Agent Server 检查点，持久化需由部署环境提供。
+失败不推进步骤；多表验证成功后原子保存，分析失败不重复取数。同 thread_id 的确认使用 Command(resume=...)，失败恢复使用 None。服务响应后、检查点保存前退出仍可能重发请求，不保证 exactly-once。旧规划检查点不迁移，请开始新分析。
 
-本阶段基础验证（离线模型替身及明确样例，不验证真实模型语义）：
+离线验证（不调用真实模型）：
 
 ```powershell
-uv run python -B tests/test_data_coverage.py
-uv run python -B tests/test_plan_step.py
+uv run python -B tests/test_data_query.py
+uv run python -B tests/test_fetch_step_data.py
 uv run python -B tests/test_analysis_loop.py
 uv run python -B tests/test_graph.py
 uv run python -B tests/test_chat.py
 uv run python -B tests/test_workflow_integration.py
 uv run python -B tests/test_prompt_contracts.py
-cd agent-chat-ui
-pnpm exec tsc --noEmit --incremental false
-node scripts/check-analysis-interrupt.mjs
-node scripts/check-analysis-charts.mjs
 ```
 
-浏览器组件检查使用本机 Chrome 和已安装的 Playwright。
-离线测试中标保五步只查询三次，价值三步只查询两次；实际次数取决于模型识别的需求及覆盖结果。
-诊断时关注节点执行日志、`step_plan.reason`、查询 `request_key` 和检查点的待执行节点。
-真实模型评估可手动运行 `tests/test_prompt_contracts.py --live --output <结果.json>`；会调用已配置模型并产生用量，需人工复核语义结果。
+当前标保五步查询五次，价值三步查询三次。诊断关注节点日志、dataset_id、保存的 request 和检查点待执行节点。
+详细契约见 [系统架构设计说明](docs/系统架构设计说明.md)。真实模型评估可手动运行 `tests/test_prompt_contracts.py --live --output <结果.json>`，需人工复核语义质量。

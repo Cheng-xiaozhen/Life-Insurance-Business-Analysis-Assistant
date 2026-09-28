@@ -1,4 +1,4 @@
-"""单次智能问答及其补参过程的状态契约。
+"""单次智能问答的状态契约。
 
 业务字段采用覆盖更新；聊天消息和执行进度使用各自的 reducer。TypedDict 只描述结构，
 模板、槽位及外部数据的运行时校验由对应节点负责。
@@ -16,8 +16,6 @@ SlotValue: TypeAlias = str | int  # 当前支持的槽位值：文本或整数�
 JSONValue = TypeAliasType("JSONValue", (  # 命名递归类型，支持 Studio 生成 JSON Schema。
     str | int | float | bool | None | list["JSONValue"] | dict[str, "JSONValue"]
 ))
-# 问数 API 契约确认后细化字段；此处不预设数据粒度或单位。
-StepData: TypeAlias = dict[str, JSONValue]
 
 
 class ScenarioCandidate(TypedDict):
@@ -44,14 +42,13 @@ class ScenarioStep(TypedDict):
     """一个普通分析步骤的模板配置。"""
 
     step_id: int  # 模板中的步骤序号，从 1 开始。
-    text: str  # 自然语言分析说明，可含槽位占位符。
+    text: str  # 自然语言分析说明，不绑定运行时槽位。
     metrics: list[str]  # 本步骤需要查询的指标。
     analysis_mode: NotRequired[str | None]  # 可选分析模式，如条件筛选。
-    query_params: dict[str, SlotValue]  # 取数参数及其槽位绑定，如年份对应 {{年份}}。
 
 
 class ScenarioTemplate(TypedDict):
-    """加载器规范化后的模板快照，保留占位符，运行期间不修改。"""
+    """加载器规范化后的模板快照，运行期间不修改。"""
 
     scenario_id: str  # 场景唯一编码。
     name: str  # 场景展示名称。
@@ -75,97 +72,24 @@ class SlotIssue(TypedDict):
 class Clarification(TypedDict):
     """中断时需要用户回答的问题。"""
 
-    kind: Literal["scenario_selection", "slot_completion", "step_clarification"]
+    kind: Literal["scenario_selection", "slot_completion"]
     prompt: str  # 展示给用户的追问内容。
     slot_issues: list[SlotIssue]  # 场景选择时为空，候选读取 candidates。
 
 
-class TimeRange(TypedDict):
-    start: str  # ISO 日期，闭区间。
-    end: str
-
-
-class DataFilter(TypedDict):
-    field: str
-    op: Literal["eq", "in", "gt", "gte", "lt", "lte"]
-    values: list[str | int | float]
-
-
-class DataRequirement(TypedDict):
-    requirement_id: str
-    metrics: list[str]
-    time_ranges: dict[str, TimeRange]
-    grain: str
-    dimensions: list[str]
-    scope: dict[str, SlotValue]
-    filters: list[DataFilter]
-    completeness: Literal["full", "available"]
-
-
-class QueryRequest(TypedDict):
-    request_key: str
-    source_id: str
-    source_version: str | None
-    population: Literal["business", "sample"]
-    requirement: DataRequirement
-
-
 class DatasetRecord(TypedDict):
-    request_key: str
-    source_id: str
-    source_version: str | None
-    population: Literal["business", "sample"]
-    coverage: DataRequirement  # 实际响应覆盖范围，不可从请求直接冒充。
-    complete: bool  # 仅相对于 population、scope 和 filters。
-    truncated: bool
-    units: dict[str, str | None]
-    data: StepData
+    """一次成功查询中的一张表；以分析内 dataset_id 为键保存。"""
 
-
-class MetricDefinition(TypedDict):
-    period: Literal["month", "ytd"]
-    unit: str | None
-    grains: list[str]
-
-
-class QueryCapabilities(TypedDict):
-    source_id: str
-    source_version: str | None
-    population: Literal["business", "sample"]
-    metrics: dict[str, MetricDefinition]
-    grains: dict[str, list[str]]  # 粒度到唯一实体键；总体为 []。
-    stable_entity_keys: bool  # 同一快照、范围下各指标返回相同实体集合。
-
-
-class DataUse(TypedDict):
-    requirement_id: str
-    dataset_id: str
-    metrics: list[str]
-    selection_filters: list[DataFilter]
-
-
-class StepAnswer(TypedDict):
-    question: str
-    answer: str
-
-
-class StepPlan(TypedDict):
     step_id: int
-    requirements: list[DataRequirement] # 本步骤所需的数据纯结论综合时可为空
-    data_uses: list[DataUse] # 已验证可使用的数据引用及选择条件
-    queries: list[QueryRequest]
-    conclusion_step_ids: list[int]
-    clarification_answers: list[StepAnswer] # 当前步骤，已经澄清的问题与回答，支持连续追问
-    reason: str # 简短决策依据，不存模型内部推理
+    request: dict  # DataQueryRequest 的 JSON 快照。
+    payload: dict  # 已经 DatasetPayload 校验的 JSON。
 
 
 class StepResult(TypedDict):
-    """一个已成功完成的步骤及其分析结论。"""
-
-    step_id: int  # 对应模板中的步骤序号。
-    data_uses: list[DataUse]
-    conclusion_step_ids: list[int]
-    conclusion: str  # 完整步骤结论，不保存流式片段。
+    step_id: int
+    dataset_ids: list[str]
+    conclusion_step_ids: list[int]  # 本次提供给分析器的前序结论。
+    conclusion: str
 
 
 class ChartRecommendation(TypedDict):
@@ -187,10 +111,9 @@ class ChartRecommendation(TypedDict):
 class AgentState(TypedDict):
     """字段由 create_initial_state 初始化，节点只返回需要覆盖的字段。
 
-    question 始终保留；补参使用已有槽位、当前追问和最新回复，不存完整历史。
-    无效或有歧义的明确修正应移除对应旧槽位并追问，不回退到默认值。
-    analyze_step 仅使用计划引用的数据及前序结论；成功后保存完整结果、
-    推进 step_index 并清空 step_plan。原始数据不在各步重复保存。
+    question 保留供场景匹配和展示；slots、user_reply 仅兼容独立槽位组件。
+    analyze_step 使用当前步骤数据；无指标步骤读取前序结论。成功后保存结果、
+    推进 step_index。原始数据不在各步重复保存。
     失败不推进步骤；总结只读取步骤结论，图表推荐可以读取步骤数据。
     """
 
@@ -198,11 +121,10 @@ class AgentState(TypedDict):
     candidates: list[ScenarioCandidate]  # 本次问题命中的候选场景。
     scenario_id: str | None  # 已选场景编码；None 表示尚未确定。
     template: ScenarioTemplate | None  # 已校验的模板快照；None 表示尚未加载。
-    slots: dict[str, SlotValue]  # 已通过校验的槽位值，包含有效默认值。
+    slots: dict[str, SlotValue]  # 兼容字段；不参与当前取数、分析和总结。
     clarification: Clarification | None  # 当前追问；None 表示没有待解决的追问。
     user_reply: str | None  # 用户补充回复
     step_index: int  # 零基列表索引，与模板 step_id 区分。
-    step_plan: StepPlan | None
     datasets: dict[str, DatasetRecord]
     step_results: list[StepResult]  # 按执行顺序保存的已完成步骤结果。
     summary: str | None  # 最后的完整场景总结；None 表示尚未生成。
@@ -238,7 +160,6 @@ def create_initial_state(question: str) -> AgentState:
         clarification=None,
         user_reply=None,
         step_index=0,
-        step_plan=None,
         datasets={},
         step_results=[],
         summary=None,

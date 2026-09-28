@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from life_insurance_business_analysis_assistant.agent.llm import get_llm
+from life_insurance_business_analysis_assistant.data_query import DataQueryResult
 from life_insurance_business_analysis_assistant.agent.nodes.recommend_charts import ChartDecision
 from life_insurance_business_analysis_assistant.agent.nodes.resolve_slots import SlotExtraction
 from life_insurance_business_analysis_assistant.prompt_loader import load_prompt
@@ -25,6 +26,13 @@ def test_llm():
                 (plain, SlotExtraction, "function_calling", {
                     "role": "assistant", "content": None, "tool_calls": [{"id": "call_1", "type": "function",
                     "function": {"name": "SlotExtraction", "arguments": '{"values": {}, "ambiguous": {}}'}}],
+                }),
+                (plain, DataQueryResult, "function_calling", {
+                    "role": "assistant", "content": None, "tool_calls": [{"id": "call_mock", "type": "function",
+                    "function": {"name": "DataQueryResult", "arguments": json.dumps({"datasets": [{
+                        "dimensions": [], "metrics": ["保费"], "rows": [{"保费": 123}],
+                        "units": {"保费": "万元"}, "is_mock": True, "complete": True, "notice": "模拟样例",
+                    }]})}}],
                 }),
                 (thinking, ChartDecision, "json_mode", {
                     "role": "assistant", "content": json.dumps(decision), "reasoning_content": "模拟思考内容",
@@ -47,7 +55,7 @@ def test_llm():
                     expected = "disabled" if method == "function_calling" else "enabled"
                     assert request["extra_body"]["thinking"]["type"] == expected
                     if method == "function_calling":
-                        assert request["tool_choice"]["function"]["name"] == "SlotExtraction"
+                        assert request["tool_choice"]["function"]["name"] == schema.__name__
                     else:
                         assert "tools" not in request and "tool_choice" not in request
                         assert request["response_format"] == {"type": "json_object"}

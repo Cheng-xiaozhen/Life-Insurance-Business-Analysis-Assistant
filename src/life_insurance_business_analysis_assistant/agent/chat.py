@@ -12,7 +12,6 @@ from langgraph.constants import TAG_NOSTREAM
 from langchain_core.runnables.config import merge_configs
 
 from life_insurance_business_analysis_assistant.agent.state import ChatState
-from life_insurance_business_analysis_assistant.data_coverage import pending_queries
 
 logger = logging.getLogger(__name__)
 
@@ -42,13 +41,12 @@ def track_execution(name, node):
             "present_clarification": "请求补充信息",
             "clarify": "等待补充信息", "no_match": "未匹配到分析场景",
             "fetch_step_data": "查询数据", "analyze_step": "生成步骤分析",
-            "plan_step": "规划步骤执行",
             "summarize_scenario": "生成场景总结", "recommend_charts": "生成图表推荐",
             "present_charts": "分析报告已完成",
         }
         label = labels[name]
         suffix = None
-        if name in ("plan_step", "fetch_step_data", "analyze_step") and step:
+        if name in ("fetch_step_data", "analyze_step") and step:
             label += f" · 步骤 {step['step_id']}：{step['text']}"
             if name == "analyze_step":
                 suffix = f"step:{step['step_id']}"
@@ -58,11 +56,8 @@ def track_execution(name, node):
             suffix = "charts"
         turn = next((m.id for m in reversed(state.get("messages", [])) if isinstance(m, HumanMessage)), analysis_id)
         entry_id = f"{analysis_id}:{name}:{index}:{turn}"
-        if name == "fetch_step_data":
-            queries = pending_queries(state)
-            if queries:
-                entry_id += f":{queries[0]['request_key']}"
-                label += " · " + "、".join(queries[0]["requirement"]["metrics"])
+        if name == "fetch_step_data" and step:
+            label += " · " + "、".join(step["metrics"])
         entry = {"id": entry_id, "analysis_id": analysis_id, "label": label, "state": "running"}
         if suffix:
             entry["message_id"] = f"{analysis_id}:{suffix}"
@@ -84,15 +79,6 @@ def track_execution(name, node):
                      "匹配到多个场景，等待选择" if candidates else "未匹配到分析场景")
         elif name == "load_template":
             label = f"分析方案：{update['template']['name']}"
-        elif name == "plan_step":
-            plan = update["step_plan"]
-            if update.get("clarification"):
-                label = "步骤需求待澄清"
-            elif plan["queries"]:
-                label = "复用并补充查询" if plan["data_uses"] else "查询新数据"
-            else:
-                label = "复用已有数据" if plan["data_uses"] else "基于已有结论直接分析"
-            label += f" · 步骤 {plan['step_id']}"
         entry = {**entry, "label": label, "state": "waiting" if name == "present_clarification" else "done"}
         writer({"type": "analysis_progress", "entry": entry})
         logger.info("analysis_id=%s node=%s completed", analysis_id, name)

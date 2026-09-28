@@ -4,7 +4,6 @@ from copy import deepcopy
 from pathlib import Path
 from unittest.mock import Mock
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
-from life_insurance_business_analysis_assistant.data_query import make_fake_query
 from unittest.mock import MagicMock, patch
 
 from langgraph.runtime import Runtime
@@ -26,7 +25,7 @@ def test_resolve_slots(get_llm, analysis_llm, summary_llm, chart_llm):
     chart_model.with_structured_output.return_value.invoke.return_value = {"recommended": False, "chart_type": None, "step_id": 1, "dimensions": [], "metrics": [], "reason": "数据不足", "description": "阅读结论"}
     chart_llm.return_value = chart_model
     path = Path(__file__).resolve().parents[1] / "config/templates/Scenario"
-    query = MagicMock(side_effect=make_fake_query({"年份": 2026, "月份": 9, "渠道": "个险", "机构范围": "全系统"}))
+    query = MagicMock()
     context = AgentContext(load_scenario_catalog(path), path, query)
     model = MagicMock()
     get_llm.return_value = model
@@ -34,6 +33,13 @@ def test_resolve_slots(get_llm, analysis_llm, summary_llm, chart_llm):
     state = create_initial_state("8月标保")
     state["scenario_id"] = "standard_premium_review"
     state.update(load_template(state, Runtime(context=context)))
+
+    # 遗留独立组件的声明在测试内提供；当前业务 Graph 不运行该节点。
+    state["template"]["slot_definitions"] = {
+        name: {"description": name, "type": "integer" if name in ("年份", "月份") else "string", "required": True,
+               **({"minimum": 1, "maximum": 12} if name == "月份" else {})}
+        for name in ("年份", "月份", "渠道", "机构范围")
+    }
 
     def resolve(values, ambiguous=None):
         invoke.return_value = {"values": values, "ambiguous": ambiguous or {}}

@@ -16,7 +16,6 @@ from life_insurance_business_analysis_assistant.agent.graph import build_analysi
 from life_insurance_business_analysis_assistant.agent.nodes.load_template import load_template
 from life_insurance_business_analysis_assistant.agent.nodes.summarize_scenario import summarize_scenario
 from life_insurance_business_analysis_assistant.agent.state import AgentState, create_initial_state
-from life_insurance_business_analysis_assistant.data_query import make_fake_query
 
 
 @patch("life_insurance_business_analysis_assistant.agent.nodes.recommend_charts.get_llm")
@@ -32,7 +31,7 @@ def test_summarize_scenario(get_llm, chart_llm):
     state.update(load_template(state, Runtime(context=AgentContext([], path))))
     state["slots"] = slots
     state["step_index"] = 3
-    state["step_results"] = [{"step_id": i, "conclusion": f"模拟步骤结论{i}", "data_uses": [], "conclusion_step_ids": []} for i in (1, 2, 3)]
+    state["step_results"] = [{"step_id": i, "conclusion": f"模拟步骤结论{i}", "dataset_ids": [], "conclusion_step_ids": []} for i in (1, 2, 3)]
     state["datasets"] = {"test-secret": {"secret": "当前数据"}}
     before = deepcopy(state)
     model = Mock()
@@ -40,7 +39,7 @@ def test_summarize_scenario(get_llm, chart_llm):
     get_llm.return_value = model
     assert summarize_scenario(state, {}) == {"summary": "模拟场景总结"}
     payload = json.loads(model.stream_events.call_args.args[0][1][1])
-    assert set(payload) == {"scenario", "slots", "conclusions"}
+    assert set(payload) == {"scenario", "conclusions"}
     assert [c["step_id"] for c in payload["conclusions"]] == [1, 2, 3]
     assert "原始数据" not in str(payload) and "当前数据" not in str(payload)
     assert state == before

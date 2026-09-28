@@ -31,13 +31,13 @@ def test_load_template():
         assert template["scenario_id"] == scenario_id
         assert [s["step_id"] for s in template["steps"]] == list(range(1, count + 1))
         assert template["slot_definitions"] == {}
-        assert template["steps"][0]["query_params"] == {}
+        assert "query_params" not in template["steps"][0]
         assert state == before
         json.dumps(template, ensure_ascii=False)
 
     original = read_scenarios(path)[0]
     assert "输入参数" not in original
-    # 旧格式校验仍保留；取数流程将在后续调整。
+    # 槽位声明仅保持兼容；不绑定到查询。
     original["输入参数"] = {
         "年份": {"说明": "分析年份", "类型": "integer", "必填": True},
         "月份": {"说明": "分析月份", "类型": "integer", "必填": True, "最小值": 1, "最大值": 12},
@@ -76,7 +76,7 @@ def test_load_template():
         no_data["分析思路"][0].pop("取数参数", None)
         write(no_data)
         direct = load_template(state, runtime)["template"]["steps"][0]
-        assert direct["metrics"] == [] and direct["query_params"] == {}
+        assert direct["metrics"] == [] and "query_params" not in direct
         saved = deepcopy(snapshot)
         write({})
         assert snapshot == saved  # 源文件后续修改不改变已加载快照。
@@ -99,9 +99,11 @@ def test_load_template():
             ("分析步骤", "", "非空字符串"),
             ("分析步骤", "查询{{未声明}}", "未声明槽位"),
             ("指标", [""], "非空字符串"),
-            ("取数参数", {"年份": "{{未知年份}}"}, "未声明槽位"),
-            ("取数参数", {"年份": "{{年份}"}, "无效槽位占位符"),
-            ("取数参数", {"年份": True}, "字符串或整数"),
+            ("指标", ["达成率", "达成率"], "不能重复"),
+            ("分析步骤", "查询{{年份}}", "不支持运行时槽位"),
+            ("取数参数", {"年份": "{{未知年份}}"}, "不再支持取数参数"),
+            ("取数参数", {"年份": "{{年份}"}, "不再支持取数参数"),
+            ("取数参数", {"年份": True}, "不再支持取数参数"),
         ]:
             invalid = deepcopy(original)
             invalid["分析思路"][0][field] = value

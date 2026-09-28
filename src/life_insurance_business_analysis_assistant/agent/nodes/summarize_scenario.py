@@ -34,7 +34,6 @@ def summarize_scenario(state: AgentState, config: RunnableConfig) -> SummarizeSc
         "scenario": {key: template[key] for key in (
             "name", "analysis_purpose", "channel_type", "time_dimension", "analysis_object"
         )},
-        "slots": state["slots"],
         "conclusions": [{"step_id": r["step_id"], "conclusion": r["conclusion"]} for r in results],
     }
     llm = get_llm(thinking=True)

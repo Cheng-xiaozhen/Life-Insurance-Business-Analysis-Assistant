@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from life_insurance_business_analysis_assistant.agent.llm import get_llm
 from life_insurance_business_analysis_assistant.agent.chat import AnalysisStream, chat_message
 from life_insurance_business_analysis_assistant.agent.state import AgentState
-from life_insurance_business_analysis_assistant.data_coverage import canonical, numeric, select_data
+from life_insurance_business_analysis_assistant.data_query import DatasetPayload, canonical, numeric
 from life_insurance_business_analysis_assistant.prompt_loader import load_prompt
 
 
@@ -36,16 +36,17 @@ class ChartDecisions(BaseModel):
 def chart_candidates(state: AgentState) -> list[dict]:
     candidates, seen = [], set()
     for result in state["step_results"]:
-        for use in result["data_uses"]:
-            identity = canonical({key: value for key, value in use.items() if key != "requirement_id"})
-            if identity in seen:
+        for dataset_id in result["dataset_ids"]:
+            if dataset_id in seen:
                 continue
-            seen.add(identity)
-            dataset = state["datasets"][use["dataset_id"]]
-            data = select_data(dataset, use)
-            candidates.append({"candidate_id": f"data-{len(candidates) + 1}", "dataset_id": use["dataset_id"],
+            seen.add(dataset_id)
+            dataset = state["datasets"][dataset_id]
+            if dataset["step_id"] != result["step_id"]:
+                raise ValueError("图表数据与来源步骤不匹配")
+            data = DatasetPayload.model_validate(dataset["payload"]).model_dump()
+            candidates.append({"candidate_id": f"data-{len(candidates) + 1}", "dataset_id": dataset_id,
                                "step_id": result["step_id"], "conclusion": result["conclusion"], "data": data,
-                               "dimensions": dataset["coverage"]["dimensions"], "metrics": use["metrics"]})
+                               "dimensions": data["dimensions"], "metrics": data["metrics"]})
     return candidates
 
 

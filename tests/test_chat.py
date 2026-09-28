@@ -47,11 +47,9 @@ def test_chat():
         assert len(saved.values["datasets"]) == 2
         assert "q1:step:2" not in [m.id for m in saved.values["messages"]]
         assert any(kind == "custom" and data.get("text") == "尚未完成" for kind, data in events)
-        plan_calls = mock["plan_step"].with_structured_output.return_value.invoke.call_count
         resumed = list(graph.stream(None, config, stream_mode=["custom", "values", "messages"]))
         result = graph.get_state(config).values
-        assert result["status"] == "已完成" and ctx.query_data.call_count == 3
-        assert mock["plan_step"].with_structured_output.return_value.invoke.call_count == plan_calls + 3
+        assert result["status"] == "已完成" and ctx.query_data.call_count == 5
         assert len({m.id for m in result["messages"]}) == len(result["messages"])
         streamed = {}
         for kind, data in events + resumed:
@@ -65,7 +63,7 @@ def test_chat():
                 assert message.content == streamed[message.id]
         charts = deepcopy(result["messages"][-1].additional_kwargs["charts"])
         second = graph.invoke({"question": None, "messages": [{"type": "human", "id": "q2", "content": "人力"}]}, config)
-        assert second["analysis_id"] == "q2" and second["datasets"] == {} and second["step_plan"] is None
+        assert second["analysis_id"] == "q2" and second["datasets"] == {}
         assert second["slots"] == {} and second["step_results"] == [] and second["summary"] is None
         assert next(m for m in second["messages"] if m.id == "q1:charts").additional_kwargs["charts"] == charts
         assert any(entry["analysis_id"] == "q1" for entry in second["execution"].values())

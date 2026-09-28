@@ -54,7 +54,7 @@ def run_case(case, model, prompt):
     elif name == "summarize_scenario":
         template["steps"] = [{"step_id": c["step_id"]} for c in payload["conclusions"]]
         state["step_index"] = len(template["steps"])
-        state["step_results"] = [{**c, "data_uses": [], "conclusion_step_ids": []}
+        state["step_results"] = [{**c, "dataset_ids": [], "conclusion_step_ids": []}
                                  for c in payload["conclusions"]]
     else:
         # 旧评估样本保留原始观测，适配新的数据引用契约；不补造缺失指标。
@@ -65,27 +65,24 @@ def run_case(case, model, prompt):
             metrics = [k for k, v in rows[0].items() if isinstance(v, (int, float))] if rows else []
         dimensions = [k for k in rows[0] if k not in metrics] if rows else []
         complete = all(all(row.get(m) is not None for m in metrics) for row in rows)
-        requirement = {"requirement_id": "contract", "metrics": metrics, "dimensions": dimensions,
-                       "grain": "contract", "scope": {}, "filters": [], "completeness": "available",
-                       "time_ranges": {m: {"start": "2025-01-01", "end": "2025-12-31"} for m in metrics}}
-        # 缺列样本只能以明确的未知值进入分析，不能冒充零值或完整数据。
         for row in rows:
             for metric in metrics:
                 row.setdefault(metric, None)
-        dataset = {"request_key": "contract", "source_id": "contract", "source_version": "1",
-                   "population": "sample" if data.get("is_mock") else "business", "coverage": requirement,
-                   "complete": complete, "truncated": False, "units": {m: None for m in metrics}, "data": data}
-        use = {"requirement_id": "contract", "dataset_id": "contract", "metrics": metrics, "selection_filters": []}
-        template["steps"] = [{**payload["step"], "metrics": metrics, "query_params": {}}]
-        state["datasets"] = {"contract": dataset}
-        if name == "analyze_step":
-            state["step_plan"] = {"step_id": payload["step"]["step_id"], "requirements": [requirement],
-                                  "data_uses": [use], "queries": [], "conclusion_step_ids": [],
-                                  "clarification_answers": [], "reason": "离线契约样本"}
-        else:
+                if isinstance(row[metric], str):
+                    row[metric] = float(row[metric].removesuffix("%"))
+        table = {"dimensions": dimensions, "metrics": metrics, "rows": rows,
+                 "units": data.get("units", {m: None for m in metrics}),
+                 "complete": complete, "is_mock": bool(data.get("is_mock")),
+                 "notice": data.get("notice", "离线契约样本；空表或缺失值不能解释成零"),
+                 "time_dimensions": data.get("time_dimensions", []), "partition_of": data.get("partition_of")}
+        template["steps"] = [{**payload["step"], "metrics": metrics}]
+        from life_insurance_business_analysis_assistant.agent.nodes.fetch_step_data import build_request
+        key = f"step:{payload['step']['step_id']}:table:1"
+        state["datasets"] = {key: {"step_id": payload["step"]["step_id"], "request": build_request(state).model_dump(), "payload": table}}
+        if name != "analyze_step":
             template["analysis_purpose"] = payload["analysis_purpose"]
             state.update(step_index=1, summary="已完成总结", step_results=[{
-                "step_id": payload["step"]["step_id"], "data_uses": [use], "conclusion_step_ids": [],
+                "step_id": payload["step"]["step_id"], "dataset_ids": [key], "conclusion_step_ids": [],
                 "conclusion": payload["conclusion"],
             }])
     before = deepcopy(state)
@@ -148,7 +145,13 @@ def test_prompt_contracts():
             assert actual_input == case["input"], case["id"]
         elif name == "analyze_step":
             assert actual_input["step"] == case["input"]["step"]
-            assert actual_input["datasets"][0]["rows"] == case["input"].get("current_data", case["input"].get("datasets", [{}])[0])["rows"]
+            expected_rows = deepcopy(case["input"].get("current_data", case["input"].get("datasets", [{}])[0])["rows"])
+            for row in expected_rows:
+                for metric in case["input"]["step"]["metrics"]:
+                    if isinstance(row.get(metric), str):
+                        row[metric] = float(row[metric].removesuffix("%"))
+            assert actual_input["datasets"][0]["rows"] == expected_rows
+            assert "slots" not in actual_input and "question" not in actual_input
             assert actual_input["conclusions"] == []
         else:
             assert actual_input["candidates"][0]["step_id"] == case["input"]["step"]["step_id"]
