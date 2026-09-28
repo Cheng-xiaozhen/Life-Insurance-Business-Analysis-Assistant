@@ -10,31 +10,31 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class QueryModel(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False) # 禁止额外字段，严格类型检查，禁止无穷大和 NaN
 
 
 class ScenarioInfo(QueryModel):
-    scenario_id: str = Field(min_length=1)
-    name: str = Field(min_length=1)
-    channel_type: str = Field(min_length=1)
-    time_dimension: str = Field(min_length=1)
-    analysis_object: str = Field(min_length=1)
-    analysis_purpose: str = Field(min_length=1)
+    scenario_id: str = Field(description="场景唯一编码")
+    name: str = Field(description="场景名称")
+    channel_type: str = Field(description="渠道类型")
+    time_dimension: str = Field(description="时间维度")
+    analysis_object: str = Field(description="分析对象")
+    analysis_purpose: str = Field(description="分析目的")
 
 
 class QueryStep(QueryModel):
-    step_id: int = Field(ge=1)
-    text: str = Field(min_length=1)
+    step_id: int = Field(ge=1,description="分析步骤序号，从 1 开始")
+    text: str = Field(min_length=1,description="分析步骤描述")
 
 
 class DataQueryRequest(QueryModel):
-    scenario: ScenarioInfo
-    step: QueryStep
-    metrics: list[str] = Field(min_length=1)
+    scenarioInfo: ScenarioInfo = Field(description="场景基本信息")
+    step: QueryStep = Field(description="分析步骤信息")
+    metrics: list[str] = Field(min_length=1, description="关联指标列表")
 
     @model_validator(mode="after")
     def check_fields(self):
-        strings = [*self.scenario.model_dump().values(), self.step.text, *self.metrics]
+        strings = [*self.scenarioInfo.model_dump().values(), self.step.text, *self.metrics]
         if any(not value.strip() for value in strings) or len(set(self.metrics)) != len(self.metrics):
             raise ValueError("请求文本不能为空，指标不能重复")
         return self
@@ -110,7 +110,13 @@ def numeric(value) -> float:
 
 
 def validate_result(raw, request: DataQueryRequest) -> DataQueryResult:
-    # 重验 dump，防止 model_construct/model_copy 绕过边界校验。
+    # 重验 dump，防止 model_construct/model_copy 绕过边界校验
+    """
+    验证
+    DataQueryResult本身是否合法
+    返回指标是否完整对应请求
+    同一指标跨表单位是否一致
+    """
     result = DataQueryResult.model_validate(raw.model_dump() if isinstance(raw, DataQueryResult) else raw)
     supplied, units = set(), {}
     for table in result.datasets:

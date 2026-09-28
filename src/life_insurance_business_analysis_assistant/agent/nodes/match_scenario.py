@@ -69,5 +69,5 @@ def match_scenario(state: AgentState, runtime: Runtime[AgentContext]) -> dict:
             scenario_id=match.scenario_id, name=entry["name"], confidence=match.confidence, reason=match.reason,
         ))
     return {"candidates": candidates, "scenario_id": None, "clarification": Clarification(
-        kind="scenario_selection", prompt="请选择并确认本次分析场景。", slot_issues=[],
+        kind="scenario_selection", prompt="请选择并确认本次分析场景。",
     ) if candidates else None}

@@ -30,18 +30,13 @@ def test_load_template():
         template = update["template"]
         assert template["scenario_id"] == scenario_id
         assert [s["step_id"] for s in template["steps"]] == list(range(1, count + 1))
-        assert template["slot_definitions"] == {}
+        assert "slot_definitions" not in template
         assert "query_params" not in template["steps"][0]
         assert state == before
         json.dumps(template, ensure_ascii=False)
 
     original = read_scenarios(path)[0]
     assert "输入参数" not in original
-    # 槽位声明仅保持兼容；不绑定到查询。
-    original["输入参数"] = {
-        "年份": {"说明": "分析年份", "类型": "integer", "必填": True},
-        "月份": {"说明": "分析月份", "类型": "integer", "必填": True, "最小值": 1, "最大值": 12},
-    }
     state = create_initial_state("标保")
     state["scenario_id"] = "standard_premium_review"
     with TemporaryDirectory() as directory:
@@ -64,12 +59,10 @@ def test_load_template():
 
         shuffled = deepcopy(original)
         shuffled["分析思路"].reverse()
-        shuffled["输入参数"]["年份"]["默认值"] = 2026
         shuffled["分析思路"][0].pop("分析模式")
         write(shuffled)
         snapshot = load_template(state, runtime)["template"]
         assert [s["step_id"] for s in snapshot["steps"]] == [1, 2, 3, 4, 5]
-        assert type(snapshot["slot_definitions"]["年份"]["default"]) is int
         assert "analysis_mode" not in snapshot["steps"][-1]
         no_data = deepcopy(original)
         no_data["分析思路"][0]["指标"] = []
@@ -82,22 +75,11 @@ def test_load_template():
         assert snapshot == saved  # 源文件后续修改不改变已加载快照。
 
         for field, value, message in [
-            ("默认值", 13, "超出允许范围"),
-            ("默认值", "8", "必须是整数"),
-            ("默认值", True, "必须是整数"),
-            ("最小值", 13, "最小值不能大于最大值"),
-            ("类型", "number", "仅支持"),
-            ("必填", "true", "布尔值"),
-        ]:
-            invalid = deepcopy(original)
-            invalid["输入参数"]["月份"][field] = value
-            reject(invalid, message)
-        for field, value, message in [
             ("步骤序号", 2, "无重复"),
             ("步骤序号", 7, "连续递增"),
             ("步骤序号", True, "正整数"),
             ("分析步骤", "", "非空字符串"),
-            ("分析步骤", "查询{{未声明}}", "未声明槽位"),
+            ("分析步骤", "查询{{未声明}}", "不支持运行时槽位"),
             ("指标", [""], "非空字符串"),
             ("指标", ["达成率", "达成率"], "不能重复"),
             ("分析步骤", "查询{{年份}}", "不支持运行时槽位"),
@@ -123,7 +105,8 @@ def test_load_template():
     graph.add_edge("load_template", END)
     output = graph.compile().invoke(state, context=context)
     assert output["template"]["scenario_id"] == state["scenario_id"]
-    assert output["slots"] == {} and output["step_index"] == 0
+    assert "slots" not in output and "user_reply" not in output
+    assert output["step_index"] == 0
 
 
 if __name__ == "__main__":

@@ -1,7 +1,6 @@
 """离线工作流检查共用的模拟模型；绝不作为运行时回退。"""
 
 import json
-import re
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -12,7 +11,6 @@ from life_insurance_business_analysis_assistant.agent.context import AgentContex
 from life_insurance_business_analysis_assistant.data_query import DataQueryResult
 
 TEMPLATE = Path(__file__).resolve().parents[1] / "config/templates/Scenario"
-SLOTS = {"年份": 2026, "月份": 8}
 
 
 def query_fixture(request):
@@ -37,23 +35,11 @@ def payload(messages):
 
 
 def models():
-    result = {name: Mock() for name in ("match_scenario", "resolve_slots", "analyze_step", "summarize_scenario", "recommend_charts")}
+    result = {name: Mock() for name in ("match_scenario", "analyze_step", "summarize_scenario", "recommend_charts")}
     def match(messages, **kwargs):
         data = payload(messages)
         return {"candidates": [{"scenario_id": entry["scenario_id"], "confidence": 0.9, "reason": "离线模拟匹配"}
                                for entry in data["catalog"] if any(word in data["question"] for word in entry["keywords"])]}
-    def slots(messages, **kwargs):
-        data = payload(messages)
-        text = data["user_reply"] or data["question"]
-        values = {}
-        for name, pattern in (("年份", r"(\d{4})年"), ("月份", r"(\d{1,2})月")):
-            found = re.search(pattern, text)
-            if found:
-                values[name] = int(found[1])
-        for name, value in (("渠道", "个险"), ("机构范围", "全系统")):
-            if name in data["slot_definitions"] and value in text:
-                values[name] = value
-        return {"values": values, "ambiguous": {}}
     def analyze(messages, **kwargs):
         return FakeListChatModel(responses=[f"模拟步骤结论-{payload(messages)['step']['step_id']}"]).stream_events(messages, **kwargs)
     def charts(messages, **kwargs):
@@ -65,7 +51,7 @@ def models():
                                     "dimensions": candidate["dimensions"] if recommended else [],
                                     "metrics": candidate["metrics"][:1] if recommended else [],
                                     "reason": "模拟图表决策", "description": "仅用于离线验证"}]}
-    for name, handler in (("match_scenario", match), ("resolve_slots", slots), ("recommend_charts", charts)):
+    for name, handler in (("match_scenario", match), ("recommend_charts", charts)):
         result[name].with_structured_output.return_value.invoke.side_effect = handler
     result["analyze_step"].stream_events.side_effect = analyze
     result["summarize_scenario"].stream_events.side_effect = lambda messages, **kwargs: FakeListChatModel(responses=["模拟场景总结"]).stream_events(messages, **kwargs)

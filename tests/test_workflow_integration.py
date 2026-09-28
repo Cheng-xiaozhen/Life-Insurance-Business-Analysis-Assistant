@@ -5,7 +5,7 @@ from langgraph.types import Command
 
 from life_insurance_business_analysis_assistant.agent.graph import build_analysis_graph, build_chat_graph
 from life_insurance_business_analysis_assistant.agent.state import create_initial_state
-from workflow_support import context, models, patched_models, payload, SLOTS
+from workflow_support import context, models, patched_models, payload
 
 
 def test_workflow_integration(studio=False, chat=False):
@@ -29,7 +29,7 @@ def test_workflow_integration(studio=False, chat=False):
             result = graph.invoke(initial if studio else create_initial_state(question), config, context=ctx)
             for index, reply in enumerate(replies):
                 interrupt = result["__interrupt__"][0]
-                assert interrupt.value["kind"] == ("scenario_selection" if index == 0 else "slot_completion")
+                assert interrupt.value["kind"] == "scenario_selection"
                 assert ctx.query_data.call_count == 0
                 if index == 0:
                     assert result["scenario_id"] is None  # 单候选也必须明确确认。
@@ -40,7 +40,7 @@ def test_workflow_integration(studio=False, chat=False):
             if not query_count:
                 assert result["summary"] is None
                 continue
-            assert result["slots"] == {}
+            assert "slots" not in result
             steps = result["template"]["steps"]
             assert len(result["step_results"]) == result["step_index"] == len(steps)
             assert len(result["datasets"]) == query_count

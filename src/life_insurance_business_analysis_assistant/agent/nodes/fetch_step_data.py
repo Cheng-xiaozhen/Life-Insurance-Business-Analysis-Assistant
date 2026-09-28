@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 def build_request(state: AgentState) -> DataQueryRequest:
     step, template = current_step(state), state["template"]
     return DataQueryRequest.model_validate({
-        "scenario": {key: template[key] for key in (
+        "scenarioInfo": {key: template[key] for key in (
             "scenario_id", "name", "channel_type", "time_dimension", "analysis_object", "analysis_purpose"
         )},
         "step": {"step_id": step["step_id"], "text": step["text"]},
@@ -33,18 +33,26 @@ def saved_step_data(state: AgentState, request: DataQueryRequest) -> tuple[list[
 
 
 def fetch_step_data(state: AgentState, runtime: Runtime[AgentContext]) -> dict:
-    step = current_step(state)
+    """
+    查询当前步骤所需的数据。
+    """
+    step = current_step(state) # 获得当前步骤信息
     if state["clarification"] is not None or not step["metrics"]:
         raise ValueError("取数需要已确认且指标非空的当前步骤")
-    request = build_request(state)
+    request = build_request(state) # 构建请求对象,包含场景信息、当前步骤文本和当前步骤指标列表
     try:
-        ids, _ = saved_step_data(state, request)
-        if ids:
+        ids, _ = saved_step_data(state, request) # 检查该步骤以前是不是查成功过
+        if ids: # 如果已经查过了,直接返回空字典,不再重复查询
             return {}
-        query = runtime.context.query_data
+        
+        # 如果没有查过，就进行查询
+        query = runtime.context.query_data # 获取查询函数
+
         if query is None:
             raise DataQueryError("未配置数据查询函数")
-        result = validate_result(query(request.model_copy(deep=True)), request)
+        
+        result = validate_result(query(request.model_copy(deep=True)), request) # 调用查询函数,并验证返回结果是否合法
+
         records = {
             f"step:{step['step_id']}:table:{index}": {
                 "step_id": step["step_id"], "request": request.model_dump(), "payload": table.model_dump(),

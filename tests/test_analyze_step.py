@@ -24,7 +24,6 @@ def test_analyze_step(get_llm):
     state["scenario_id"] = "standard_premium_review"
     state.update(load_template(state, Runtime(context=AgentContext([], path))))
     state["step_index"] = 1
-    state["slots"] = {"年份": 2026, "月份": 8, "渠道": "个险", "机构范围": "全系统"}
     state["step_results"] = [{"step_id": 1, "dataset_ids": [], "conclusion_step_ids": [], "conclusion": "前序结论"}]
     runtime = Runtime(context=context())
     state.update(fetch_step_data(state, runtime))

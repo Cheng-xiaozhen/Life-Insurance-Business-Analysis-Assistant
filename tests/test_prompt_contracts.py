@@ -22,12 +22,11 @@ from life_insurance_business_analysis_assistant.agent.context import AgentContex
 from life_insurance_business_analysis_assistant.agent.llm import get_llm
 from life_insurance_business_analysis_assistant.agent.nodes.load_template import load_template
 from life_insurance_business_analysis_assistant.agent.nodes.recommend_charts import ChartDecisions
-from life_insurance_business_analysis_assistant.agent.nodes.resolve_slots import SlotExtraction
 from life_insurance_business_analysis_assistant.agent.state import create_initial_state
 from life_insurance_business_analysis_assistant.prompt_loader import load_prompt
 
 ROOT = Path(__file__).resolve().parents[1]
-NODES = ("resolve_slots", "analyze_step", "summarize_scenario", "recommend_charts")
+NODES = ("analyze_step", "summarize_scenario", "recommend_charts")
 MODULES = {name: import_module(
     f"life_insurance_business_analysis_assistant.agent.nodes.{name}"
 ) for name in NODES}
@@ -41,17 +40,8 @@ def run_case(case, model, prompt):
     path = ROOT / "config/templates/Scenario"
     state.update(load_template(state, Runtime(context=AgentContext([], path))))
     template = state["template"]
-    state["slots"] = deepcopy(payload.get("slots", {}))
     template.update(payload.get("scenario", {}))
-    if name == "resolve_slots":
-        template["slot_definitions"] = {
-            key: {**definition, "required": True,
-                  **({"minimum": 1, "maximum": 12} if key == "月份" else {})}
-            for key, definition in payload["slot_definitions"].items()
-        }
-        state.update(slots=deepcopy(payload["existing_slots"]),
-                     user_reply=payload["user_reply"], clarification=deepcopy(payload["clarification"]))
-    elif name == "summarize_scenario":
+    if name == "summarize_scenario":
         template["steps"] = [{"step_id": c["step_id"]} for c in payload["conclusions"]]
         state["step_index"] = len(template["steps"])
         state["step_results"] = [{**c, "dataset_ids": [], "conclusion_step_ids": []}
@@ -89,7 +79,7 @@ def run_case(case, model, prompt):
     module = MODULES[name]
     with patch.object(module, "get_llm", return_value=model), \
          patch.object(module, "load_prompt", return_value=prompt):
-        update = getattr(module, name)(state) if name == "resolve_slots" else getattr(module, name)(state, {})
+        update = getattr(module, name)(state, {})
     assert state == before, "节点不得原地修改状态"
     return update
 
@@ -123,16 +113,16 @@ def test_prompt_contracts():
     for case in cases:
         name, expected = case["node"], case["output"]
         model = Mock()
-        if name in ("resolve_slots", "recommend_charts"):
-            schema = SlotExtraction if name == "resolve_slots" else ChartDecisions
+        if name == "recommend_charts":
+            schema = ChartDecisions
             schema.model_validate(structured_output(case))
             model.with_structured_output.return_value.invoke.return_value = structured_output(case)
         else:
             assert isinstance(expected, str) and expected.strip()
             model.stream_events.return_value = Mock(text=iter([expected]), output=AIMessage(content=expected))
         update = run_case(case, model, load_prompt(name))
-        if name in ("resolve_slots", "recommend_charts"):
-            method = "function_calling" if name == "resolve_slots" else "json_mode"
+        if name == "recommend_charts":
+            method = "json_mode"
             model.with_structured_output.assert_called_once_with(schema, method=method)
             messages = model.with_structured_output.return_value.invoke.call_args.args[0]
         else:
@@ -141,7 +131,7 @@ def test_prompt_contracts():
             assert actual == expected
         assert [m[0] for m in messages] == ["system", "human"]
         actual_input = json.loads(messages[1][1])
-        if name in ("resolve_slots", "summarize_scenario"):
+        if name == "summarize_scenario":
             assert actual_input == case["input"], case["id"]
         elif name == "analyze_step":
             assert actual_input["step"] == case["input"]["step"]
@@ -169,11 +159,6 @@ def test_prompt_contracts():
                 assert actual["data"]
         else:
             assert messages[0][1] == load_prompt(name)
-        if "expected_slots" in case:
-            assert update["slots"] == case["expected_slots"], case["id"]
-            actual_issues = {i["slot_name"]: i["reason"] for i in
-                             (update["clarification"] or {}).get("slot_issues", [])}
-            assert actual_issues == case["expected_issues"], case["id"]
     print(f"Prompt examples / held-out message and node contracts: PASS ({len(cases)} cases)")
 
 
@@ -191,7 +176,7 @@ def live(args):
                       "input": case["input"], "expected": case["output"],
                       "review": case["review"]}
             try:
-                model = get_llm(thinking=name != "resolve_slots")
+                model = get_llm(thinking=True)
                 if model is None:
                     raise RuntimeError("模型未配置")
                 client = model.root_client.with_options(timeout=30, max_retries=0)
@@ -199,8 +184,8 @@ def live(args):
                 prompt = (directory / f"{name}.md").read_text(encoding="utf-8") if directory else load_prompt(name)
                 record.update(model=model.model_name,
                               prompt_sha256=hashlib.sha256(prompt.encode("utf-8")).hexdigest())
-                if name in ("resolve_slots", "recommend_charts"):
-                    # 保留合并前的增量，避免旧值被重新抽取却被最终状态掩盖。
+                if name == "recommend_charts":
+                    # 记录结构化输出，供评估复核。
                     structured = model.with_structured_output
 
                     def capture(schema, **kwargs):
@@ -249,7 +234,7 @@ def test_live_recording():
         for record, case, model in zip(records, cases, models, strict=True):
             model.root_client.with_options.assert_called_once_with(timeout=30, max_retries=0)
             assert len(record["prompt_sha256"]) == 64
-            if case["node"] in ("resolve_slots", "recommend_charts"):
+            if case["node"] == "recommend_charts":
                 assert record["raw_output"] == structured_output(case)
     print("Evaluation recording (Mock only): PASS")
 

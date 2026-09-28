@@ -7,7 +7,6 @@ from unittest.mock import patch
 from life_insurance_business_analysis_assistant.agent.llm import get_llm
 from life_insurance_business_analysis_assistant.data_query import DataQueryResult
 from life_insurance_business_analysis_assistant.agent.nodes.recommend_charts import ChartDecision
-from life_insurance_business_analysis_assistant.agent.nodes.resolve_slots import SlotExtraction
 from life_insurance_business_analysis_assistant.prompt_loader import load_prompt
 
 
@@ -23,10 +22,6 @@ def test_llm():
             decision = {"recommended": False, "chart_type": None, "step_id": 1, "dimensions": [],
                         "metrics": [], "reason": "单条记录", "description": "阅读结论", "candidate_id": None}
             cases = [
-                (plain, SlotExtraction, "function_calling", {
-                    "role": "assistant", "content": None, "tool_calls": [{"id": "call_1", "type": "function",
-                    "function": {"name": "SlotExtraction", "arguments": '{"values": {}, "ambiguous": {}}'}}],
-                }),
                 (plain, DataQueryResult, "function_calling", {
                     "role": "assistant", "content": None, "tool_calls": [{"id": "call_mock", "type": "function",
                     "function": {"name": "DataQueryResult", "arguments": json.dumps({"datasets": [{

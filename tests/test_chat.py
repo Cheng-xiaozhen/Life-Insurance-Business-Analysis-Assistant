@@ -64,7 +64,7 @@ def test_chat():
         charts = deepcopy(result["messages"][-1].additional_kwargs["charts"])
         second = graph.invoke({"question": None, "messages": [{"type": "human", "id": "q2", "content": "人力"}]}, config)
         assert second["analysis_id"] == "q2" and second["datasets"] == {}
-        assert second["slots"] == {} and second["step_results"] == [] and second["summary"] is None
+        assert "slots" not in second and second["step_results"] == [] and second["summary"] is None
         assert next(m for m in second["messages"] if m.id == "q1:charts").additional_kwargs["charts"] == charts
         assert any(entry["analysis_id"] == "q1" for entry in second["execution"].values())
         for index, invalid in enumerate([

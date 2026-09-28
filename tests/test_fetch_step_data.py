@@ -6,19 +6,19 @@ from life_insurance_business_analysis_assistant.agent.nodes.fetch_step_data impo
 from life_insurance_business_analysis_assistant.agent.nodes.load_template import load_template
 from life_insurance_business_analysis_assistant.agent.state import create_initial_state
 from life_insurance_business_analysis_assistant.data_query import DataQueryError
-from workflow_support import context, SLOTS
+from workflow_support import context
 
 
 def test_fetch_step_data():
     ctx = context()
     runtime = Runtime(context=ctx)
     state = create_initial_state("用户的私有问题：2026年8月北京银保")
-    state.update(scenario_id="standard_premium_review", slots=SLOTS)
+    state.update(scenario_id="standard_premium_review")
     state.update(load_template(state, runtime))
     request = build_request(state)
-    assert set(request.model_dump()) == {"scenario", "step", "metrics"}
-    assert set(request.scenario.model_dump()) == {"scenario_id", "name", "channel_type", "time_dimension", "analysis_object", "analysis_purpose"}
-    assert request.scenario.channel_type == "个险"
+    assert set(request.model_dump()) == {"scenarioInfo", "step", "metrics"}
+    assert set(request.scenarioInfo.model_dump()) == {"scenario_id", "name", "channel_type", "time_dimension", "analysis_object", "analysis_purpose"}
+    assert request.scenarioInfo.channel_type == "个险"
     assert "2026" not in request.model_dump_json() and "北京" not in request.model_dump_json()
     before = deepcopy(state)
     update = fetch_step_data(state, runtime)

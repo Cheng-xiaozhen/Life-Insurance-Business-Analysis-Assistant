@@ -25,7 +25,6 @@ def test_graph():
         result = graph.invoke(Command(resume="standard_premium_review"), configs[1], context=ctx)
         assert result["summary"] and ctx.query_data.call_count == 8
         assert mock["match_scenario"].with_structured_output.return_value.invoke.call_count == 2
-        mock["resolve_slots"].with_structured_output.assert_not_called()
     print("graph confirmation, deterministic routing, thread isolation: PASS")
 
 

@@ -1,6 +1,5 @@
-"""加载选定场景，只校验模板，不抽取槽位或执行分析。"""
+"""加载选定场景，只校验模板，不执行分析。"""
 
-import re
 from typing import Any, TypedDict
 
 from langgraph.runtime import Runtime
@@ -11,7 +10,6 @@ from life_insurance_business_analysis_assistant.agent.state import (
     AgentState,
     ScenarioStep,
     ScenarioTemplate,
-    SlotDefinition,
 )
 
 
@@ -41,55 +39,6 @@ def _texts(value: Any, location: str) -> list[str]:
     return [_text(item, location) for item in value]
 
 
-def _slot(value: Any, location: str) -> SlotDefinition:
-    raw = _mapping(value, location)
-    kind = raw.get("类型")
-    if kind not in ("string", "integer"):
-        raise ValueError(f"{location}.类型 仅支持 string 或 integer")
-    if type(raw.get("必填")) is not bool:
-        raise ValueError(f"{location}.必填 必须是布尔值")
-    result = SlotDefinition(
-        description=_text(raw.get("说明"), f"{location}.说明"),
-        type=kind,
-        required=raw["必填"],
-    )
-    for source, target in (("最小值", "minimum"), ("最大值", "maximum")):
-        if source in raw:
-            if kind != "integer" or type(raw[source]) is not int:
-                raise ValueError(f"{location}.{source} 仅支持整数槽位的整数边界")
-            if target == "minimum":
-                result["minimum"] = raw[source]
-            else:
-                result["maximum"] = raw[source]
-    if "minimum" in result and "maximum" in result:
-        if result["minimum"] > result["maximum"]:
-            raise ValueError(f"{location} 最小值不能大于最大值")
-    if "默认值" in raw:
-        default = raw["默认值"]
-        if kind == "integer":
-            if type(default) is not int:
-                raise ValueError(f"{location}.默认值 必须是整数")
-            if ("minimum" in result and default < result["minimum"]) or (
-                "maximum" in result and default > result["maximum"]
-            ):
-                raise ValueError(f"{location}.默认值 超出允许范围")
-        else:
-            _text(default, f"{location}.默认值")
-        result["default"] = default
-    return result
-
-
-def _check_references(text: str, slots: dict[str, SlotDefinition], location: str) -> None:
-    """只检查占位符声明，不替换内容或改变参数类型。"""
-    pattern = r"\{\{([^{}]+)\}\}"
-    for name in re.findall(pattern, text):
-        if name not in slots:
-            raise ValueError(f"{location} 引用了未声明槽位: {name}")
-    remainder = re.sub(pattern, "", text)
-    if "{{" in remainder or "}}" in remainder:
-        raise ValueError(f"{location} 包含无效槽位占位符")
-
-
 def load_template(
     state: AgentState, runtime: Runtime[AgentContext]
 ) -> LoadTemplateUpdate:
@@ -109,8 +58,6 @@ def load_template(
     if len(selected) != 1:
         raise ValueError(f"场景 {scenario_id} 必须唯一存在，实际找到 {len(selected)} 个")
     source = selected[0]
-    slot_source = _mapping(source.get("输入参数", {}), f"{scenario_id}.输入参数")
-    slots = {name: _slot(value, f"槽位 {name}") for name, value in slot_source.items()}
     raw_steps = source.get("分析思路")
     if not isinstance(raw_steps, list) or not raw_steps:
         raise ValueError(f"场景 {scenario_id}.分析思路 必须是非空步骤列表")
@@ -122,7 +69,6 @@ def load_template(
             raise ValueError("步骤序号必须是正整数")
         location = f"步骤 {step_id}"
         text = _text(step.get("分析步骤"), f"{location}.分析步骤")
-        _check_references(text, slots, location)
         if step.get("取数参数"):
             raise ValueError(f"{location} 不再支持取数参数，请移除旧查询配置")
         if "{{" in text or "}}" in text:
@@ -149,7 +95,6 @@ def load_template(
         analysis_object=_text(source.get("分析对象"), "分析对象"),
         analysis_purpose=_text(source.get("分析目的"), "分析目的"),
         keywords=[] if source.get("触发关键词") == [] else list(dict.fromkeys(_texts(source.get("触发关键词"), "触发关键词"))),
-        slot_definitions=slots,
         steps=steps,
     )
     return LoadTemplateUpdate(template=template)

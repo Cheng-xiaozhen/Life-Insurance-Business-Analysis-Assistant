@@ -25,11 +25,9 @@ def test_summarize_scenario(get_llm, chart_llm):
     chart_model.with_structured_output.return_value.invoke.return_value = {"recommended": False, "chart_type": None, "step_id": 1, "dimensions": [], "metrics": [], "reason": "数据不足", "description": "阅读结论"}
     chart_llm.return_value = chart_model
     path = Path(__file__).resolve().parents[1] / "config/templates/Scenario"
-    slots = {"年份": 2026, "月份": 8, "渠道": "个险", "机构范围": "全系统"}
     state = create_initial_state("不传原始问题")
     state["scenario_id"] = "value_review"
     state.update(load_template(state, Runtime(context=AgentContext([], path))))
-    state["slots"] = slots
     state["step_index"] = 3
     state["step_results"] = [{"step_id": i, "conclusion": f"模拟步骤结论{i}", "dataset_ids": [], "conclusion_step_ids": []} for i in (1, 2, 3)]
     state["datasets"] = {"test-secret": {"secret": "当前数据"}}
