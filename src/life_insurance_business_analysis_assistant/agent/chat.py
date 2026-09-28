@@ -6,6 +6,8 @@ import logging
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.runnables import RunnableConfig
 from langgraph.errors import GraphInterrupt
+from langgraph.runtime import Runtime
+from life_insurance_business_analysis_assistant.agent.context import AgentContext
 from langchain_core.messages import HumanMessage
 from langgraph.config import get_stream_writer
 from langgraph.constants import TAG_NOSTREAM
@@ -54,7 +56,7 @@ def track_execution(name, node):
             suffix = "summary"
         elif name == "recommend_charts":
             suffix = "charts"
-        turn = next((m.id for m in reversed(state.get("messages", [])) if isinstance(m, HumanMessage)), analysis_id)
+        turn = state.get("turn_id") or next((m.id for m in reversed(state.get("messages", [])) if isinstance(m, HumanMessage)), analysis_id)
         entry_id = f"{analysis_id}:{name}:{index}:{turn}"
         if name == "fetch_step_data" and step:
             label += " · " + "、".join(step["metrics"])
@@ -141,6 +143,7 @@ class AnalysisStream(BaseCallbackHandler):
 
 def stream_text(llm, prompt, config, state, suffix, heading):
     """聊天流使用固定消息 ID；完整文本通过节点返回值提交检查点。"""
+    state = config.get("metadata", {}).get("analysis_chat") or state
     chatting = bool(state.get("analysis_id"))
     progress = AnalysisStream(state, suffix, heading) if chatting else None
     if chatting:
@@ -159,3 +162,45 @@ def stream_text(llm, prompt, config, state, suffix, heading):
     finally:
         if progress:
             progress.flush()
+
+
+def track_analysis_step(name, node):
+    """仅发送进度事件；UI 字段不进入子图的状态或返回值。"""
+    def run(state, config: RunnableConfig, runtime: Runtime[AgentContext]):
+        chat = config.get("metadata", {}).get("analysis_chat")
+        if not chat:
+            return node(state, runtime) if name == "fetch_step_data" else node(state, config)
+        update = track_execution(name, lambda view, cfg: (
+            node(state, runtime) if name == "fetch_step_data" else node(state, cfg)
+        ))({**state, **chat}, config)
+        update.pop("execution")
+        return update
+    return run
+
+
+def chat_analysis_execution(subgraph, context):
+    """父图边界适配：运行元数据传入 config，完成后投影聊天消息。"""
+    def run(state: ChatState, config: RunnableConfig):
+        analysis_id = state["analysis_id"]
+        turn = next((m.id for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), analysis_id)
+        result = subgraph.invoke({"template": state["template"]},
+            merge_configs(config, {"metadata": {"analysis_chat": {
+                "analysis_id": analysis_id, "turn_id": turn,
+            }}}), context=context)
+        messages, execution = [], {}
+        for step, outcome in zip(state["template"]["steps"], result["analysis_result"]["step_results"]):
+            messages.append(chat_message(state, f"step:{step['step_id']}",
+                f"### 步骤 {step['step_id']}：{step['text']}\n\n{outcome['conclusion']}"))
+            for name, label in (("fetch_step_data", "查询数据"), ("analyze_step", "生成步骤分析")):
+                if name == "fetch_step_data" and not step["metrics"]:
+                    continue
+                entry_id = f"{analysis_id}:{name}:{step['step_id'] - 1}:{turn}"
+                entry = {"id": entry_id, "analysis_id": analysis_id, "state": "done",
+                         "label": f"{label} · 步骤 {step['step_id']}：{step['text']}"}
+                if name == "analyze_step":
+                    entry["message_id"] = f"{analysis_id}:step:{step['step_id']}"
+                else:
+                    entry["label"] += " · " + "、".join(step["metrics"])
+                execution[entry_id] = entry
+        return {**result, "messages": messages, "execution": execution, "status": "正在生成场景总结"}
+    return run

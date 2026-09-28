@@ -1,8 +1,9 @@
 """运行：python -B tests/test_analyze_step.py；验证 v3 消息流，不访问模型服务。"""
+from workflow_support import execution_state
 
 from copy import deepcopy
 from workflow_support import context, models, patched_models
-from life_insurance_business_analysis_assistant.agent.nodes.fetch_step_data import fetch_step_data
+from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.fetch_step_data import fetch_step_data
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -12,19 +13,20 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 
 from life_insurance_business_analysis_assistant.agent.context import AgentContext
-from life_insurance_business_analysis_assistant.agent.nodes.analyze_step import analyze_step
+from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.analyze_step import analyze_step
 from life_insurance_business_analysis_assistant.agent.nodes.load_template import load_template
-from life_insurance_business_analysis_assistant.agent.state import AgentState, create_initial_state
+from life_insurance_business_analysis_assistant.agent.state import create_initial_state
+from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.state import AnalysisExecutionState
 
 
-@patch("life_insurance_business_analysis_assistant.agent.nodes.analyze_step.get_llm")
+@patch("life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.analyze_step.get_llm")
 def test_analyze_step(get_llm):
     path = Path(__file__).resolve().parents[1] / "config/templates/Scenario"
     state = create_initial_state("2026年8月个险全系统标保")
     state["scenario_id"] = "standard_premium_review"
     state.update(load_template(state, Runtime(context=AgentContext([], path))))
-    state["step_index"] = 1
-    state["step_results"] = [{"step_id": 1, "dataset_ids": [], "conclusion_step_ids": [], "conclusion": "前序结论"}]
+    state = execution_state(state["template"], index=1)
+    state["step_results"] = [{"step_id": 1, "dataset_ids": [], "conclusion": "前序结论"}]
     runtime = Runtime(context=context())
     state.update(fetch_step_data(state, runtime))
     before = deepcopy(state)
@@ -34,7 +36,7 @@ def test_analyze_step(get_llm):
     update = analyze_step(state, {})
     prompt = model.stream_events.call_args.args[0][1][1]
     assert "前序数据" not in prompt and "前序结论" not in prompt
-    assert state["question"] not in prompt and "全年标保" not in prompt
+    assert "2026年8月个险全系统标保" not in prompt and "全年标保" not in prompt
     assert state == before
     assert update["step_results"][-1]["conclusion"] == "模拟数据：甲达成率80%。"
     assert update["step_results"][0] == before["step_results"][0]
@@ -57,7 +59,7 @@ def test_analyze_step(get_llm):
         assert state == before
 
     get_llm.return_value = FakeListChatModel(responses=["模拟数据：甲达成率80%。"])
-    graph = StateGraph(AgentState)
+    graph = StateGraph(AnalysisExecutionState)
     graph.add_node("analyze_step", analyze_step)
     graph.add_edge(START, "analyze_step")
     graph.add_edge("analyze_step", END)

@@ -106,7 +106,7 @@ def test_load_template():
     output = graph.compile().invoke(state, context=context)
     assert output["template"]["scenario_id"] == state["scenario_id"]
     assert "slots" not in output and "user_reply" not in output
-    assert output["step_index"] == 0
+    assert output["analysis_result"] is None and "step_index" not in output
 
 
 if __name__ == "__main__":

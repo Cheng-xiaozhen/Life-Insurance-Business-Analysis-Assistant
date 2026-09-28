@@ -28,7 +28,7 @@ from life_insurance_business_analysis_assistant.prompt_loader import load_prompt
 ROOT = Path(__file__).resolve().parents[1]
 NODES = ("analyze_step", "summarize_scenario", "recommend_charts")
 MODULES = {name: import_module(
-    f"life_insurance_business_analysis_assistant.agent.nodes.{name}"
+    f"life_insurance_business_analysis_assistant.agent.{'subgraphs.analysis_execution' if name == 'analyze_step' else 'nodes'}.{name}"
 ) for name in NODES}
 
 
@@ -42,10 +42,10 @@ def run_case(case, model, prompt):
     template = state["template"]
     template.update(payload.get("scenario", {}))
     if name == "summarize_scenario":
-        template["steps"] = [{"step_id": c["step_id"]} for c in payload["conclusions"]]
-        state["step_index"] = len(template["steps"])
-        state["step_results"] = [{**c, "dataset_ids": [], "conclusion_step_ids": []}
-                                 for c in payload["conclusions"]]
+        template["steps"] = [{"step_id": c["step_id"]} for c in payload.get("step_results", payload.get("conclusions"))]
+        state["step_results"] = [{**c, "dataset_ids": []}
+                                 for c in payload.get("step_results", payload.get("conclusions"))]
+        state["analysis_result"] = {"step_results": state.pop("step_results"), "datasets": payload.get("datasets", {})}
     else:
         # 旧评估样本保留原始观测，适配新的数据引用契约；不补造缺失指标。
         data = deepcopy(payload.get("current_data", payload.get("data", payload.get("datasets", [{}])[0])))
@@ -66,15 +66,17 @@ def run_case(case, model, prompt):
                  "notice": data.get("notice", "离线契约样本；空表或缺失值不能解释成零"),
                  "time_dimensions": data.get("time_dimensions", []), "partition_of": data.get("partition_of")}
         template["steps"] = [{**payload["step"], "metrics": metrics}]
-        from life_insurance_business_analysis_assistant.agent.nodes.fetch_step_data import build_request
+        from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.fetch_step_data import build_request
+        state.update(step_index=0, current_step=template["steps"][0], datasets={}, step_results=[])
         key = f"step:{payload['step']['step_id']}:table:1"
         state["datasets"] = {key: {"step_id": payload["step"]["step_id"], "request": build_request(state).model_dump(), "payload": table}}
         if name != "analyze_step":
             template["analysis_purpose"] = payload["analysis_purpose"]
             state.update(step_index=1, summary="已完成总结", step_results=[{
-                "step_id": payload["step"]["step_id"], "dataset_ids": [key], "conclusion_step_ids": [],
+                "step_id": payload["step"]["step_id"], "dataset_ids": [key],
                 "conclusion": payload["conclusion"],
             }])
+            state["analysis_result"] = {"step_results": state.pop("step_results"), "datasets": state.pop("datasets")}
     before = deepcopy(state)
     module = MODULES[name]
     with patch.object(module, "get_llm", return_value=model), \
@@ -132,7 +134,9 @@ def test_prompt_contracts():
         assert [m[0] for m in messages] == ["system", "human"]
         actual_input = json.loads(messages[1][1])
         if name == "summarize_scenario":
-            assert actual_input == case["input"], case["id"]
+            expected_input = case["input"]
+            expected_results = expected_input.get("step_results", [{**c, "dataset_ids": []} for c in expected_input.get("conclusions", [])])
+            assert actual_input == {"scenario": expected_input["scenario"], "step_results": expected_results, "datasets": expected_input.get("datasets", {})}, case["id"]
         elif name == "analyze_step":
             assert actual_input["step"] == case["input"]["step"]
             expected_rows = deepcopy(case["input"].get("current_data", case["input"].get("datasets", [{}])[0])["rows"])

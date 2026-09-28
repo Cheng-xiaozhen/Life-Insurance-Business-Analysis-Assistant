@@ -169,6 +169,7 @@ export function Thread() {
         command: { resume: { [analysisInterrupt.id]: reply.trim() } },
         checkpoint: null,
         streamMode: ["values", "custom"],
+        streamSubgraphs: true,
         streamResumable: true,
         multitaskStrategy: "reject",
       });
@@ -332,6 +333,7 @@ export function Thread() {
           void stream
             .submit(null, {
               streamMode: ["values", "custom"],
+              streamSubgraphs: true,
               streamResumable: true,
               multitaskStrategy: "reject",
               checkpoint: null,

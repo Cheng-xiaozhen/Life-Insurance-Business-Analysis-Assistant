@@ -2,7 +2,8 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypedDict
+from pydantic.json_schema import SkipJsonSchema
+from typing_extensions import TypedDict
 
 from life_insurance_business_analysis_assistant.scenario_store import read_scenarios
 
@@ -23,7 +24,8 @@ class AgentContext:
 
     scenario_catalog: list[ScenarioEntry]
     template_path: str | Path | None = None  # 场景 YAML 来源，加载节点调用前提供。
-    query_data: QueryData | None = None  # 由调用方注入真实查询或 LLM Mock，不自动回退。
+    # 仅由服务端注入，不能作为 Studio 的 JSON 输入字段。
+    query_data: SkipJsonSchema[QueryData | None] = None
 
 
 def load_scenario_catalog(path: str | Path) -> list[ScenarioEntry]:

@@ -7,7 +7,8 @@ from langgraph.types import Command
 from langgraph.checkpoint.memory import InMemorySaver
 from omegaconf import OmegaConf
 from life_insurance_business_analysis_assistant.scenario_store import read_scenarios
-from life_insurance_business_analysis_assistant.agent.graph import build_analysis_graph, build_chat_graph, route_analysis
+from life_insurance_business_analysis_assistant.agent.graph import build_analysis_graph, build_chat_graph
+from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.graph import route_analysis
 from life_insurance_business_analysis_assistant.agent.state import create_initial_state
 from workflow_support import TEMPLATE, context, models, patched_models, payload
 
@@ -29,9 +30,8 @@ def test_analysis_loop():
                 graph.invoke(create_initial_state("标保"), config, context=ctx)
                 result = graph.invoke(Command(resume="standard_premium_review"), config, context=ctx)
             assert ctx.query_data.call_count == count
-            assert result["step_index"] == len(result["step_results"]) == count + 1
-            assert result["step_results"][-1]["dataset_ids"] == []
-            assert result["step_results"][-1]["conclusion_step_ids"] == list(range(1, count + 1))
+            assert len(result["analysis_result"]["step_results"]) == count + 1
+            assert result["analysis_result"]["step_results"][-1]["dataset_ids"] == []
             sent = payload(mock["analyze_step"].stream_events.call_args.args[0])
             assert len(sent["conclusions"]) == count and sent["datasets"] == []
             assert "slots" not in sent and "question" not in sent
@@ -60,12 +60,14 @@ def test_analysis_loop():
             graph.invoke(create_initial_state("标保"), config, context=ctx)
             with TestCase().assertRaises(RuntimeError):
                 graph.invoke(Command(resume="standard_premium_review"), config, context=ctx)
-            saved = graph.get_state(config)
-            assert saved.next == (node,)
+            saved = graph.get_state(config, subgraphs=True)
+            assert saved.next == (("analysis_execution",) if node == "fetch_step_data" else (node,))
             if node == "fetch_step_data":
-                assert len(saved.values["datasets"]) == 1 and saved.values["step_index"] == 1
+                child = saved.tasks[0].state
+                assert child.next == (node,)
+                assert len(child.values["datasets"]) == 1 and child.values["step_index"] == 1
             else:
-                assert len(saved.values["step_results"]) == 5 and ctx.query_data.call_count == 5
+                assert len(saved.values["analysis_result"]["step_results"]) == 5 and ctx.query_data.call_count == 5
                 target.side_effect = original
             result = graph.invoke(None, config, context=ctx)
             assert result["summary"] and result["chart_recommendations"]

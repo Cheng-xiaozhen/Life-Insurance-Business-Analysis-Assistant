@@ -1,11 +1,12 @@
 """问数结构校验及 Mock 的真实适配边界，完全离线。"""
+from workflow_support import execution_state
 from copy import deepcopy
 from unittest import TestCase
 from unittest.mock import Mock
 from langgraph.runtime import Runtime
 from life_insurance_business_analysis_assistant.agent.state import create_initial_state
 from life_insurance_business_analysis_assistant.agent.nodes.load_template import load_template
-from life_insurance_business_analysis_assistant.agent.nodes.fetch_step_data import build_request
+from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.fetch_step_data import build_request
 from life_insurance_business_analysis_assistant.data_query import DataQueryRequest, DataQueryError, validate_result
 from life_insurance_business_analysis_assistant.mock_query_service import MockQueryService
 from workflow_support import context, query_fixture
@@ -15,7 +16,7 @@ def test_data_query():
     state = create_initial_state("标保")
     state["scenario_id"] = "standard_premium_review"
     state.update(load_template(state, Runtime(context=context())))
-    state["step_index"] = 1
+    state = execution_state(state["template"], index=1)
     request = build_request(state)
     good = query_fixture(request).model_dump()
     invalid = []

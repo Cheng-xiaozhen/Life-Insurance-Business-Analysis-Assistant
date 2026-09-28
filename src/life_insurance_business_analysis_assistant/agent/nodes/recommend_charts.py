@@ -35,12 +35,12 @@ class ChartDecisions(BaseModel):
 
 def chart_candidates(state: AgentState) -> list[dict]:
     candidates, seen = [], set()
-    for result in state["step_results"]:
+    for result in state["analysis_result"]["step_results"]:
         for dataset_id in result["dataset_ids"]:
             if dataset_id in seen:
                 continue
             seen.add(dataset_id)
-            dataset = state["datasets"][dataset_id]
+            dataset = state["analysis_result"]["datasets"][dataset_id]
             if dataset["step_id"] != result["step_id"]:
                 raise ValueError("图表数据与来源步骤不匹配")
             data = DatasetPayload.model_validate(dataset["payload"]).model_dump()
@@ -118,9 +118,9 @@ def assemble_chart(decision: ChartDecision, candidate: dict | None) -> dict:
 
 def recommend_charts(state: AgentState, config: RunnableConfig) -> dict:
     template = state["template"]
-    if template is None or not state["summary"] or state["clarification"] or state["step_index"] != len(template["steps"]):
+    if template is None or not state["summary"] or state["clarification"] or state["analysis_result"] is None:
         raise ValueError("图表推荐需要完整的步骤结果和场景总结")
-    if [r["step_id"] for r in state["step_results"]] != [s["step_id"] for s in template["steps"]]:
+    if [r["step_id"] for r in state["analysis_result"]["step_results"]] != [s["step_id"] for s in template["steps"]]:
         raise ValueError("图表推荐的步骤结果缺失或顺序错误")
     candidates = chart_candidates(state)
     if not candidates:

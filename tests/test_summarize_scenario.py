@@ -28,25 +28,31 @@ def test_summarize_scenario(get_llm, chart_llm):
     state = create_initial_state("不传原始问题")
     state["scenario_id"] = "value_review"
     state.update(load_template(state, Runtime(context=AgentContext([], path))))
-    state["step_index"] = 3
-    state["step_results"] = [{"step_id": i, "conclusion": f"模拟步骤结论{i}", "dataset_ids": [], "conclusion_step_ids": []} for i in (1, 2, 3)]
-    state["datasets"] = {"test-secret": {"secret": "当前数据"}}
+    state["analysis_result"] = {
+        "step_results": [{"step_id": i, "conclusion": f"模拟步骤结论{i}",
+                          "dataset_ids": ["step:1:table:1"] * 2 if i == 1 else []} for i in (1, 2, 3)],
+        "datasets": {"test-secret": {"secret": "当前数据"},
+                     "step:1:table:1": {"step_id": 1, "request": {}, "payload": {"rows": [{"保费": 123}]}}},
+    }
     before = deepcopy(state)
     model = Mock()
     model.stream_events.return_value = Mock(text=iter(["模拟场景", "总结"]), output=AIMessage(content="模拟场景总结"))
     get_llm.return_value = model
     assert summarize_scenario(state, {}) == {"summary": "模拟场景总结"}
     payload = json.loads(model.stream_events.call_args.args[0][1][1])
-    assert set(payload) == {"scenario", "conclusions"}
-    assert [c["step_id"] for c in payload["conclusions"]] == [1, 2, 3]
+    assert set(payload) == {"scenario", "step_results", "datasets"}
+    assert [c["step_id"] for c in payload["step_results"]] == [1, 2, 3]
     assert "原始数据" not in str(payload) and "当前数据" not in str(payload)
+    assert payload["datasets"] == {"step:1:table:1": {"rows": [{"保费": 123}]}}
     assert state == before
-    for invalid in ("unfinished", "missing", "order", "empty"):
+    for invalid in ("unfinished", "missing", "order", "reference", "owner", "empty"):
         candidate = deepcopy(state)
-        if invalid == "unfinished": candidate["step_index"] = 2
-        elif invalid == "missing": candidate["step_results"].pop()
-        elif invalid == "order": candidate["step_results"].reverse()
-        else: candidate["step_results"][0]["conclusion"] = " "
+        if invalid == "unfinished": candidate["analysis_result"] = None
+        elif invalid == "missing": candidate["analysis_result"]["step_results"].pop()
+        elif invalid == "order": candidate["analysis_result"]["step_results"].reverse()
+        elif invalid == "reference": candidate["analysis_result"]["datasets"].clear()
+        elif invalid == "owner": candidate["analysis_result"]["datasets"]["step:1:table:1"]["step_id"] = 2
+        else: candidate["analysis_result"]["step_results"][0]["conclusion"] = " "
         get_llm.reset_mock()
         try:
             summarize_scenario(candidate, {})

@@ -2,13 +2,13 @@
 import logging
 from langgraph.runtime import Runtime
 from life_insurance_business_analysis_assistant.agent.context import AgentContext
-from life_insurance_business_analysis_assistant.agent.state import AgentState, current_step
+from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.state import AnalysisExecutionState, current_step
 from life_insurance_business_analysis_assistant.data_query import DataQueryError, DataQueryRequest, validate_result
 
 logger = logging.getLogger(__name__)
 
 
-def build_request(state: AgentState) -> DataQueryRequest:
+def build_request(state: AnalysisExecutionState) -> DataQueryRequest:
     step, template = current_step(state), state["template"]
     return DataQueryRequest.model_validate({
         "scenarioInfo": {key: template[key] for key in (
@@ -19,7 +19,7 @@ def build_request(state: AgentState) -> DataQueryRequest:
     })
 
 
-def saved_step_data(state: AgentState, request: DataQueryRequest) -> tuple[list[str], list[dict]]:
+def saved_step_data(state: AnalysisExecutionState, request: DataQueryRequest) -> tuple[list[str], list[dict]]:
     records = [(key, record) for key, record in state["datasets"].items()
                if record["step_id"] == request.step.step_id]
     if not records:
@@ -32,12 +32,12 @@ def saved_step_data(state: AgentState, request: DataQueryRequest) -> tuple[list[
     return ids, [table.model_dump() for table in result.datasets]
 
 
-def fetch_step_data(state: AgentState, runtime: Runtime[AgentContext]) -> dict:
+def fetch_step_data(state: AnalysisExecutionState, runtime: Runtime[AgentContext]) -> dict:
     """
     查询当前步骤所需的数据。
     """
     step = current_step(state) # 获得当前步骤信息
-    if state["clarification"] is not None or not step["metrics"]:
+    if not step["metrics"]:
         raise ValueError("取数需要已确认且指标非空的当前步骤")
     request = build_request(state) # 构建请求对象,包含场景信息、当前步骤文本和当前步骤指标列表
     try:

@@ -10,6 +10,11 @@ from workflow_support import context, models, patched_models
 def test_graph():
     ctx, mock = context(), models()
     graph = build_analysis_graph()
+    assert "analysis_execution" in graph.builder.nodes
+    assert not {"fetch_step_data", "analyze_step", "load_step"} & graph.builder.nodes.keys()
+    assert ("load_template", "analysis_execution") in graph.builder.edges
+    assert ("analysis_execution", "summarize_scenario") in graph.builder.edges
+    assert ("summarize_scenario", "recommend_charts") in graph.builder.edges
     configs = [{"configurable": {"thread_id": name}, "recursion_limit": 100} for name in ("a", "b")]
     with patched_models(mock):
         for config in configs:

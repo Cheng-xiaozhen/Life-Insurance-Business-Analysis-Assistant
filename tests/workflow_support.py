@@ -62,5 +62,16 @@ def models():
 def patched_models(items):
     with ExitStack() as stack:
         for name, model in items.items():
-            stack.enter_context(patch(f"life_insurance_business_analysis_assistant.agent.nodes.{name}.get_llm", return_value=model))
+            module = "subgraphs.analysis_execution" if name == "analyze_step" else "nodes"
+            stack.enter_context(patch(f"life_insurance_business_analysis_assistant.agent.{module}.{name}.get_llm", return_value=model))
         yield
+
+
+def execution_state(template, index=0):
+    """使用真实初始化/加载节点构造节点单测的内部 State。"""
+    from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.graph import initialize_subgraph, load_step
+    state = {"template": template}
+    state.update(initialize_subgraph(state))
+    state["step_index"] = index
+    state.update(load_step(state))
+    return state

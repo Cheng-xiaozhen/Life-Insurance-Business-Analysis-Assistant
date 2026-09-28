@@ -11,6 +11,9 @@ from langchain_core.messages import AnyMessage
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict, TypeAliasType
 
+from .contracts import ScenarioTemplate
+from .subgraphs.analysis_execution.state import AnalysisExecutionResult
+
 
 JSONValue = TypeAliasType("JSONValue", (  # 命名递归类型，支持 Studio 生成 JSON Schema。
     str | int | float | bool | None | list["JSONValue"] | dict[str, "JSONValue"]
@@ -26,48 +29,11 @@ class ScenarioCandidate(TypedDict):
     reason: str
 
 
-class ScenarioStep(TypedDict):
-    """一个普通分析步骤的模板配置。"""
-
-    step_id: int  # 模板中的步骤序号，从 1 开始。
-    text: str  # 自然语言分析说明。
-    metrics: list[str]  # 本步骤需要查询的指标。
-    analysis_mode: NotRequired[str | None]  # 可选分析模式，如条件筛选。
-
-
-class ScenarioTemplate(TypedDict):
-    """加载器规范化后的模板快照，运行期间不修改。"""
-
-    scenario_id: str  # 场景唯一编码。
-    name: str  # 场景展示名称。
-    channel_type: str  # 场景适用渠道。
-    time_dimension: str  # 时间粒度，如月度，不是具体年月。
-    analysis_object: str  # 分析对象层级，如机构，不是具体机构范围。
-    analysis_purpose: str  # 业务分析目的，如经营检视。
-    keywords: list[str]  # 用于匹配场景的触发关键词。
-    steps: list[ScenarioStep]  # 分析步骤 已按 step_id 排序。
-
-
 class Clarification(TypedDict):
     """中断时需要用户回答的问题。"""
 
     kind: Literal["scenario_selection"]
     prompt: str  # 展示给用户的追问内容。
-
-
-class DatasetRecord(TypedDict):
-    """一次成功查询中的一张表；以分析内 dataset_id 为键保存。"""
-
-    step_id: int
-    request: dict  # DataQueryRequest 的 JSON 快照。
-    payload: dict  # 已经 DatasetPayload 校验的 JSON。
-
-
-class StepResult(TypedDict):
-    step_id: int
-    dataset_ids: list[str]
-    conclusion_step_ids: list[int]  # 本次提供给分析器的前序结论。
-    conclusion: str
 
 
 class ChartRecommendation(TypedDict):
@@ -89,10 +55,7 @@ class ChartRecommendation(TypedDict):
 class AgentState(TypedDict):
     """字段由 create_initial_state 初始化，节点只返回需要覆盖的字段。
 
-    question 保留供场景匹配和展示。
-    analyze_step 使用当前步骤数据；无指标步骤读取前序结论。成功后保存结果、
-    推进 step_index。原始数据不在各步重复保存。
-    失败不推进步骤；总结只读取步骤结论，图表推荐可以读取步骤数据。
+    分析循环由独立子图执行，父图只保存完成后的 analysis_result。
     """
 
     question: str  # 本次分析的原始问题，运行期间保留。
@@ -100,9 +63,7 @@ class AgentState(TypedDict):
     scenario_id: str | None  # 已选场景编码；None 表示尚未确定。
     template: ScenarioTemplate | None  # 已校验的模板快照；None 表示尚未加载。
     clarification: Clarification | None  # 当前追问；None 表示没有待解决的追问。
-    step_index: int  # 零基列表索引，与模板 step_id 区分。
-    datasets: dict[str, DatasetRecord]
-    step_results: list[StepResult]  # 按执行顺序保存的已完成步骤结果。
+    analysis_result: AnalysisExecutionResult | None
     summary: str | None  # 最后的完整场景总结；None 表示尚未生成。
     chart_recommendations: list[ChartRecommendation] | None  # None 未执行；完成后包含推荐或不推荐决策。
 
@@ -133,17 +94,7 @@ def create_initial_state(question: str) -> AgentState:
         scenario_id=None,
         template=None,
         clarification=None,
-        step_index=0,
-        datasets={},
-        step_results=[],
+        analysis_result=None,
         summary=None,
         chart_recommendations=None,
     )
-
-
-
-def current_step(state: AgentState) -> ScenarioStep:
-    template, index = state["template"], state["step_index"]
-    if template is None or type(index) is not int or not 0 <= index < len(template["steps"]):
-        raise ValueError("step_index 超出当前模板步骤范围")
-    return template["steps"][index]

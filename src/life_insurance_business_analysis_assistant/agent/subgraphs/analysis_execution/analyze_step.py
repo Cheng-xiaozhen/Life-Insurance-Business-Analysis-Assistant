@@ -6,9 +6,9 @@ from typing import TypedDict
 from langchain_core.runnables import RunnableConfig
 
 from life_insurance_business_analysis_assistant.agent.llm import get_llm
-from life_insurance_business_analysis_assistant.agent.chat import chat_message, stream_text
-from life_insurance_business_analysis_assistant.agent.state import AgentState, StepResult, current_step
-from life_insurance_business_analysis_assistant.agent.nodes.fetch_step_data import build_request, saved_step_data
+from life_insurance_business_analysis_assistant.agent.chat import stream_text
+from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.state import AnalysisExecutionState, StepResult, current_step
+from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.fetch_step_data import build_request, saved_step_data
 from life_insurance_business_analysis_assistant.prompt_loader import load_prompt
 
 
@@ -19,12 +19,10 @@ class AnalyzeStepUpdate(TypedDict):
     step_index: int
 
 
-def analyze_step(state: AgentState, config: RunnableConfig) -> AnalyzeStepUpdate:
+def analyze_step(state: AnalysisExecutionState, config: RunnableConfig) -> AnalyzeStepUpdate:
     """普通步骤读取自己的数据，无指标步骤读取已完成结论。"""
     step = current_step(state)
     template, index = state["template"], state["step_index"]
-    if state["clarification"] is not None:
-        raise ValueError("分析前必须完成场景确认")
     if [r["step_id"] for r in state["step_results"]] != [s["step_id"] for s in template["steps"][:index]]:
         raise ValueError("前序步骤结果缺失、重复或顺序错误")
     dataset_ids, datasets, conclusions = [], [], []
@@ -59,10 +57,6 @@ def analyze_step(state: AgentState, config: RunnableConfig) -> AnalyzeStepUpdate
     if not conclusion:
         raise RuntimeError("分析模型未返回有效结论")
     result = StepResult(step_id=step["step_id"], dataset_ids=dataset_ids,
-                        conclusion_step_ids=[r["step_id"] for r in conclusions], conclusion=conclusion)
+                        conclusion=conclusion)
     update = AnalyzeStepUpdate(step_results=[*state["step_results"], result], step_index=index + 1)
-    if state.get("analysis_id"):
-        update.update(messages=[chat_message(state, f"step:{step['step_id']}", f"### {heading}\n\n{conclusion}",
-                                            reasoning=message.additional_kwargs.get("analysis_reasoning", ""))],
-                      status="正在执行下一分析阶段")
     return update

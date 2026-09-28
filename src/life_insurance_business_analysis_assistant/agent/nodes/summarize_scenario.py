@@ -1,4 +1,4 @@
-"""根据全部步骤结论流式生成场景总结，不读取原始数据或重新取数。"""
+"""根据全部步骤结论及其引用数据流式生成场景总结。"""
 
 import json
 from typing import TypedDict
@@ -18,23 +18,31 @@ class SummarizeScenarioUpdate(TypedDict):
 
 
 def summarize_scenario(state: AgentState, config: RunnableConfig) -> SummarizeScenarioUpdate:
-    """确认步骤完整后，仅抽取编号和结论作为总结依据。"""
-    template, index = state["template"], state["step_index"]
+    """确认步骤完整后，按引用去重传入数据及步骤结论。"""
+    template, analysis = state["template"], state["analysis_result"]
     if template is None or state["clarification"] is not None:
         raise ValueError("总结需要已加载模板且没有待解决追问")
     steps = template["steps"]
-    results = state["step_results"]
-    if not steps or type(index) is not int or index != len(steps):
+    if not steps or analysis is None:
         raise ValueError("所有分析步骤完成后才能总结")
+    results = analysis["step_results"]
     if [r["step_id"] for r in results] != [s["step_id"] for s in steps]:
         raise ValueError("步骤结果缺失、重复或顺序不匹配")
     if any(not isinstance(r["conclusion"], str) or not r["conclusion"].strip() for r in results):
         raise ValueError("步骤结论必须是非空文本")
+    datasets = {}
+    for result in results:
+        for dataset_id in result["dataset_ids"]:
+            record = analysis["datasets"].get(dataset_id)
+            if record is None or record["step_id"] != result["step_id"]:
+                raise ValueError("总结引用的数据集不存在或来源步骤不匹配")
+            datasets[dataset_id] = record["payload"]
     payload = {
         "scenario": {key: template[key] for key in (
             "name", "analysis_purpose", "channel_type", "time_dimension", "analysis_object"
         )},
-        "conclusions": [{"step_id": r["step_id"], "conclusion": r["conclusion"]} for r in results],
+        "step_results": results,
+        "datasets": datasets,
     }
     llm = get_llm(thinking=True)
     if llm is None:

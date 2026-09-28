@@ -42,11 +42,12 @@ def test_workflow_integration(studio=False, chat=False):
                 continue
             assert "slots" not in result
             steps = result["template"]["steps"]
-            assert len(result["step_results"]) == result["step_index"] == len(steps)
-            assert len(result["datasets"]) == query_count
+            assert len(result["analysis_result"]["step_results"]) == len(steps)
+            assert not {"step_index", "current_step", "datasets", "step_results"} & result.keys()
+            assert len(result["analysis_result"]["datasets"]) == query_count
             assert len({call.args[0].step.step_id for call in ctx.query_data.call_args_list}) == query_count
-            assert all("data" not in entry for entry in result["step_results"])
-            assert result["step_results"][1]["dataset_ids"] != result["step_results"][2]["dataset_ids"]
+            assert all("data" not in entry for entry in result["analysis_result"]["step_results"])
+            assert result["analysis_result"]["step_results"][1]["dataset_ids"] != result["analysis_result"]["step_results"][2]["dataset_ids"]
             for call in mock["analyze_step"].stream_events.call_args_list:
                 assert payload(call.args[0])["datasets"]
             assert result["summary"] == "模拟场景总结"

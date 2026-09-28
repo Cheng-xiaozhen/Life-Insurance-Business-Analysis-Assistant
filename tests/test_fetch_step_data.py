@@ -1,8 +1,9 @@
 """请求边界、多表原子提交、重复执行与失败隔离。"""
+from workflow_support import execution_state
 from copy import deepcopy
 from unittest import TestCase
 from langgraph.runtime import Runtime
-from life_insurance_business_analysis_assistant.agent.nodes.fetch_step_data import fetch_step_data, build_request
+from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.fetch_step_data import fetch_step_data, build_request
 from life_insurance_business_analysis_assistant.agent.nodes.load_template import load_template
 from life_insurance_business_analysis_assistant.agent.state import create_initial_state
 from life_insurance_business_analysis_assistant.data_query import DataQueryError
@@ -15,6 +16,7 @@ def test_fetch_step_data():
     state = create_initial_state("用户的私有问题：2026年8月北京银保")
     state.update(scenario_id="standard_premium_review")
     state.update(load_template(state, runtime))
+    state = execution_state(state["template"])
     request = build_request(state)
     assert set(request.model_dump()) == {"scenarioInfo", "step", "metrics"}
     assert set(request.scenarioInfo.model_dump()) == {"scenario_id", "name", "channel_type", "time_dimension", "analysis_object", "analysis_purpose"}
@@ -39,13 +41,13 @@ def test_fetch_step_data():
     bad[1]["rows"][0][request.metrics[-1]] = float("nan")
     for response in (None, {"datasets": []}, {"datasets": bad}, {"datasets": [tables[0]]}):
         ctx.query_data.return_value = response
-        with TestCase().assertLogs("life_insurance_business_analysis_assistant.agent.nodes.fetch_step_data", level="ERROR"):
+        with TestCase().assertLogs("life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.fetch_step_data", level="ERROR"):
             with TestCase().assertRaises(DataQueryError):
                 fetch_step_data(before, runtime)
         assert before["datasets"] == {} and before["step_index"] == 0
     changed = deepcopy(state)
     changed["template"]["steps"][0]["text"] += "改变请求"
-    with TestCase().assertLogs("life_insurance_business_analysis_assistant.agent.nodes.fetch_step_data", level="ERROR"):
+    with TestCase().assertLogs("life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.fetch_step_data", level="ERROR"):
         with TestCase().assertRaises(DataQueryError):
             fetch_step_data(changed, runtime)
     print("request whitelist, multi-table atomic save, retry and isolation: PASS")

@@ -99,17 +99,17 @@ Next 服务通过项目 `.venv` 中的 Python 和现有 PyYAML 读写文件，�
 页面不再读取浏览器中的旧模拟数据。Agent 初始化时加载场景目录，匹配节点复用该目录；目录信息更新后需重启 Agent。已开始的分析仍使用其模板快照。
 离线读写及页面回归：启动 Next 后，在 `agent-chat-ui` 运行 `node scripts/check-scenarios.mjs`，测试仅写临时目录。
 
-`match_scenario → clarify → load_template → 按 metrics 路由 → fetch_step_data / analyze_step`
+`match_scenario → clarify → load_template → analysis_execution（Subgraph）→ summarize_scenario → recommend_charts`
 
-指标非空时每步调用一次 Query Service，然后分析；指标为空时直接分析前序结论。步骤完成后循环，最后执行 `summarize_scenario → recommend_charts`。不再执行查询规划、步骤澄清或跨步骤覆盖复用。
+子图负责初始化、加载当前步骤、循环和结果组装。指标非空时每步调用一次 Query Service，然后分析；指标为空时直接分析前序结论。步骤完成后循环，最后执行 `summarize_scenario → recommend_charts`。不再执行查询规划、步骤澄清或跨步骤覆盖复用。
 
 `AgentContext.query_data` 接收严格的 `DataQueryRequest`（scenario、step、metrics），返回 `DataQueryResult`（一张或多张结构化表）。slots、原始问题、推导条件不传入；当前接口不能保证按用户指定年月或机构查询，分析与总结不凭用户问题给数据补写口径。
 
 Studio 默认注入 LLM `MockQueryService`，需要配置模型密钥。数值由 LLM 生成，Pydantic 校验结构，代码强制标明模拟来源。不同步骤为独立样例，不保证同一业务快照；没有硬编码数据回退。未来替换为 HTTP 适配器即可，Graph 不变。
 
-数据按 `step:2:table:1` 保存，结论只保存 dataset_ids 和 conclusion_step_ids。图表继续使用已有数据，由 Python 组装数值；百分比使用数值和 `%` 单位。折线要求 time_dimensions，饼图要求 partition_of。Word 导出保持现有文字报告能力。
+数据按 `step:2:table:1` 保存，步骤结果保存 step_id、dataset_ids、conclusion；父图只保存完成后的 analysis_result。总结按 dataset_ids 引用同时读取结论和去重数据。图表继续使用已有数据，由 Python 组装数值；百分比使用数值和 `%` 单位。折线要求 time_dimensions，饼图要求 partition_of。Word 导出保持现有文字报告能力。
 
-失败不推进步骤；多表验证成功后原子保存，分析失败不重复取数。同 thread_id 的确认使用 Command(resume=...)，失败恢复使用 None。服务响应后、检查点保存前退出仍可能重发请求，不保证 exactly-once。旧规划检查点不迁移，请开始新分析。
+失败不推进步骤；多表验证成功后原子保存，分析失败不重复取数。同 thread_id 的确认使用 Command(resume=...)，失败恢复使用 None。服务响应后、检查点保存前退出仍可能重发请求，不保证 exactly-once。重构前的平面循环检查点不迁移，请开始新分析；新图的内部检查点通过 get_state(config, subgraphs=True) 查看。
 
 离线验证（不调用真实模型）：
 
@@ -117,6 +117,7 @@ Studio 默认注入 LLM `MockQueryService`，需要配置模型密钥。数值�
 uv run python -B tests/test_data_query.py
 uv run python -B tests/test_fetch_step_data.py
 uv run python -B tests/test_analysis_loop.py
+uv run python -B tests/test_analysis_execution.py
 uv run python -B tests/test_graph.py
 uv run python -B tests/test_chat.py
 uv run python -B tests/test_workflow_integration.py
@@ -124,4 +125,4 @@ uv run python -B tests/test_prompt_contracts.py
 ```
 
 当前标保五步查询五次，价值三步查询三次。诊断关注节点日志、dataset_id、保存的 request 和检查点待执行节点。
-详细契约见 [系统架构设计说明](docs/系统架构设计说明.md)。真实模型评估可手动运行 `tests/test_prompt_contracts.py --live --output <结果.json>`，需人工复核语义质量。
+本次子图设计与恢复边界见 [AnalysisExecution 重构说明](docs/analysis-execution.md)。真实模型评估可手动运行 `tests/test_prompt_contracts.py --live --output <结果.json>`，需人工复核语义质量。

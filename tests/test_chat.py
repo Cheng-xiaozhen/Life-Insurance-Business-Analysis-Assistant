@@ -35,19 +35,27 @@ def test_chat():
         events = []
         with TestCase().assertLogs("life_insurance_business_analysis_assistant.agent.chat", level="ERROR"):
             try:
-                for event in graph.stream(Command(resume={interrupt.id: "standard_premium_review"}), config, stream_mode=["custom", "values", "messages"]):
-                    events.append(event)
+                for event in graph.stream(Command(resume={interrupt.id: "standard_premium_review"}), config, stream_mode=["custom", "values", "messages"], subgraphs=True):
+                    events.append(event[1:])
             except RuntimeError as error:
                 assert str(error) == "模拟连接中断"
             else:
                 raise AssertionError("模拟中断应抛出异常")
-        saved = graph.get_state(config)
-        assert saved.next == ("analyze_step",)
-        assert saved.values["step_index"] == 1 and len(saved.values["step_results"]) == 1
-        assert len(saved.values["datasets"]) == 2
+        saved = graph.get_state(config, subgraphs=True)
+        assert saved.next == ("analysis_execution",)
+        child = saved.tasks[0].state
+        assert child.next == ("analyze_step",)
+        assert child.values["step_index"] == 1 and len(child.values["step_results"]) == 1
+        assert len(child.values["datasets"]) == 2
+        assert saved.values["analysis_result"] is None
+        assert not {"messages", "analysis_id", "status", "execution"} & child.values.keys()
+        assert ctx.query_data.call_count == 2
+        assert any(kind == "custom" and data.get("type") == "analysis_progress"
+                   and data["entry"]["state"] == "error"
+                   and data["entry"]["message_id"] == "q1:step:2" for kind, data in events)
         assert "q1:step:2" not in [m.id for m in saved.values["messages"]]
         assert any(kind == "custom" and data.get("text") == "尚未完成" for kind, data in events)
-        resumed = list(graph.stream(None, config, stream_mode=["custom", "values", "messages"]))
+        resumed = [event[1:] for event in graph.stream(None, config, stream_mode=["custom", "values", "messages"], subgraphs=True)]
         result = graph.get_state(config).values
         assert result["status"] == "已完成" and ctx.query_data.call_count == 5
         assert len({m.id for m in result["messages"]}) == len(result["messages"])
@@ -63,8 +71,8 @@ def test_chat():
                 assert message.content == streamed[message.id]
         charts = deepcopy(result["messages"][-1].additional_kwargs["charts"])
         second = graph.invoke({"question": None, "messages": [{"type": "human", "id": "q2", "content": "人力"}]}, config)
-        assert second["analysis_id"] == "q2" and second["datasets"] == {}
-        assert "slots" not in second and second["step_results"] == [] and second["summary"] is None
+        assert second["analysis_id"] == "q2" and second["analysis_result"] is None
+        assert "slots" not in second and second["summary"] is None
         assert next(m for m in second["messages"] if m.id == "q1:charts").additional_kwargs["charts"] == charts
         assert any(entry["analysis_id"] == "q1" for entry in second["execution"].values())
         for index, invalid in enumerate([
