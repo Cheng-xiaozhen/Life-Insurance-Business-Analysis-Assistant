@@ -11,8 +11,8 @@ from langchain_core.messages import AnyMessage
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict, TypeAliasType
 
-from .contracts import ScenarioTemplate
-from .subgraphs.analysis_execution.state import AnalysisExecutionResult
+from life_insurance_business_analysis_assistant.agent.contracts import ScenarioTemplate
+from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.state import AnalysisExecutionResult
 
 
 JSONValue = TypeAliasType("JSONValue", (  # 命名递归类型，支持 Studio 生成 JSON Schema。

@@ -4,12 +4,12 @@ from typing import Literal
 from langgraph.graph import END, START, StateGraph
 
 from life_insurance_business_analysis_assistant.agent.context import AgentContext
-from .nodes.analyze_step import analyze_step
-from .nodes.fetch_step_data import fetch_step_data
-from .nodes.initialize_subgraph import initialize_subgraph
-from .nodes.load_step import load_step
-from .nodes.finalize_subgraph import finalize_subgraph
-from .state import AnalysisExecutionInput, AnalysisExecutionOutput, AnalysisExecutionState
+from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.nodes.analyze_step import analyze_step
+from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.nodes.fetch_step_data import fetch_step_data
+from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.nodes.initialize_subgraph import initialize_subgraph
+from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.nodes.load_step import load_step
+from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.nodes.finalize_subgraph import finalize_subgraph
+from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.state import AnalysisExecutionInput, AnalysisExecutionOutput, AnalysisExecutionState
 
 
 def route_current_step(state: AnalysisExecutionState) -> Literal["fetch_step_data", "analyze_step"]:

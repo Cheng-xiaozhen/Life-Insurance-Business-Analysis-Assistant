@@ -1,5 +1,5 @@
 """校验全部步骤并组装唯一业务输出。"""
-from ..state import AnalysisExecutionOutput, AnalysisExecutionState
+from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.state import AnalysisExecutionOutput, AnalysisExecutionState
 
 
 def finalize_subgraph(state: AnalysisExecutionState) -> AnalysisExecutionOutput:
