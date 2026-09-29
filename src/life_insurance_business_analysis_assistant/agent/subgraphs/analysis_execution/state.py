@@ -56,7 +56,7 @@ class AnalysisExecutionState(AnalysisExecutionInput):
 
 class AnalysisExecutionResult(TypedDict):
     """分析子图的唯一输出契约"""
-    datasets: dict[str, DatasetRecord] # 已加载的数据集，键为dataset_id
+    datasets: dict[str, DatasetRecord] # 查询到的数据结果，键为dataset_id
     step_results: list[StepResult] # 已完成的分析步骤结果列表
 
 
