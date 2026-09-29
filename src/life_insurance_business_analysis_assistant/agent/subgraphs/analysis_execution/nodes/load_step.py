@@ -1,6 +1,5 @@
 """加载并校验当前分析步骤。"""
-from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.state import AnalysisExecutionState
-from life_insurance_business_analysis_assistant.agent.contracts import ScenarioStep
+from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.state import AnalysisExecutionState, ScenarioStep
 
 def load_step(state: AnalysisExecutionState) -> dict[str,ScenarioStep]:
     """

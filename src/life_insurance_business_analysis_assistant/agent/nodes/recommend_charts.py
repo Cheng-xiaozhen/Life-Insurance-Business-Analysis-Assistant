@@ -35,6 +35,7 @@ class ChartDecisions(BaseModel):
 
 def chart_candidates(state: AgentState) -> list[dict]:
     candidates, seen = [], set()
+    steps = {step["step_id"]: step for step in state["template"]["steps"]}
     for result in state["analysis_result"]["step_results"]:
         for dataset_id in result["dataset_ids"]:
             if dataset_id in seen:
@@ -45,7 +46,7 @@ def chart_candidates(state: AgentState) -> list[dict]:
                 raise ValueError("图表数据与来源步骤不匹配")
             data = DatasetPayload.model_validate(dataset["payload"]).model_dump()
             candidates.append({"candidate_id": f"data-{len(candidates) + 1}", "dataset_id": dataset_id,
-                               "step_id": result["step_id"], "conclusion": result["conclusion"], "data": data,
+                               "step_id": result["step_id"], "step": steps[result["step_id"]], "conclusion": result["conclusion"], "data": data,
                                "dimensions": data["dimensions"], "metrics": data["metrics"]})
     return candidates
 
@@ -94,8 +95,9 @@ def assemble_chart(decision: ChartDecision, candidate: dict | None) -> dict:
                 date.fromisoformat(str(row[dimension]))
             rows.sort(key=lambda row: str(row[dimension]))
         if decision.chart_type == "pie":
-            if len(decision.metrics) != 1 or not data.get("partition_of"):
-                raise ValueError("数据源未声明互斥且构成整体的份额关系")
+            # 份额语义由推荐模型结合步骤和业务上下文判断，此处校验数值条件。
+            if len(decision.metrics) != 1:
+                raise ValueError("饼图需要一个可加总的数值指标")
             metric = decision.metrics[0]
             if data["units"][metric] == "%" or any(row[metric] < 0 for row in rows) or sum(row[metric] for row in rows) <= 0:
                 raise ValueError("比率、负值或零总量不能作为整体份额")
@@ -134,7 +136,9 @@ def recommend_charts(state: AgentState, config: RunnableConfig) -> dict:
     try:
         raw = llm.with_structured_output(ChartDecisions, method="json_mode").invoke([
             ("system", load_prompt("recommend_charts") + json.dumps(ChartDecisions.model_json_schema(), ensure_ascii=False)),
-            ("human", json.dumps({"analysis_purpose": template["analysis_purpose"], "summary": state["summary"],
+            ("human", json.dumps({"scenarioInfo": {key: template[key] for key in (
+                                      "scenario_id", "name", "channel_type", "time_dimension", "analysis_object", "analysis_purpose")},
+                                  "analysis_purpose": template["analysis_purpose"], "summary": state["summary"],
                                   "candidates": candidates}, ensure_ascii=False)),
         ], config=merge_configs(config, {"tags": [TAG_NOSTREAM], "callbacks": [progress] if progress else []}),
             **({"stream": True} if progress else {}))

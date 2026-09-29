@@ -72,5 +72,52 @@ def test_data_query():
         MockQueryService(None)(request)
     print("query contracts, mock identity, bounded retry and failure: PASS")
 
+
+def test_pie_recommendation():
+    from unittest.mock import patch
+    from life_insurance_business_analysis_assistant.agent.nodes.recommend_charts import (
+        ChartDecision, assemble_chart, chart_candidates, recommend_charts,
+    )
+
+    state = create_initial_state("机构标保构成")
+    state["scenario_id"] = "standard_premium_review"
+    state.update(load_template(state, Runtime(context=context())))
+    state["template"]["steps"] = [{"step_id": 1, "text": "查看两个机构的标保构成", "metrics": ["标保"]}]
+    data = {"dimensions": ["机构"], "metrics": ["标保"],
+            "rows": [{"机构": "甲", "标保": 60}, {"机构": "乙", "标保": 40}],
+            "units": {"标保": "万元"}, "is_mock": True, "complete": True,
+            "notice": "两个虚构机构的模拟数据，未指定年月。"}
+    state["analysis_result"] = {
+        "datasets": {"d1": {"step_id": 1, "request": {}, "payload": data}},
+        "step_results": [{"step_id": 1, "dataset_ids": ["d1"], "conclusion": "甲60万元，乙40万元。"}],
+    }
+    state["summary"] = "两个模拟机构的标保数据。"
+    decision = ChartDecision(recommended=True, chart_type="pie", step_id=1, candidate_id="data-1",
+                             dimensions=["机构"], metrics=["标保"],
+                             reason="机构分类互斥，标保可加总为所示两个机构的合计。",
+                             description="展示两个模拟机构在该集合内的标保构成。")
+    model = Mock()
+    model.with_structured_output.return_value.invoke.return_value = {"recommendations": [decision.model_dump()]}
+    with patch("life_insurance_business_analysis_assistant.agent.nodes.recommend_charts.get_llm", return_value=model):
+        chart = recommend_charts(state, {})["chart_recommendations"][0]
+    assert chart["recommended"] and chart["chart_type"] == "pie" and chart["data"] == data["rows"]
+    import json
+    sent = json.loads(model.with_structured_output.return_value.invoke.call_args.args[0][1][1])
+    assert sent["scenarioInfo"]["scenario_id"] == state["scenario_id"]
+    assert sent["candidates"][0]["step"] == state["template"]["steps"][0]
+    candidate = chart_candidates(state)[0]
+    for values in ((-1, 40), (0, 0)):
+        invalid = deepcopy(candidate)
+        for row, value in zip(invalid["data"]["rows"], values):
+            row["标保"] = value
+        assert not assemble_chart(decision, invalid)["recommended"]
+    for field, value in (("complete", False), ("units", {"标保": "%"})):
+        invalid = deepcopy(candidate)
+        invalid["data"][field] = value
+        assert not assemble_chart(decision, invalid)["recommended"]
+    print("pie without query hints, recommendation context and numeric guards: PASS")
+
+
 if __name__ == "__main__":
     test_data_query()
+    test_pie_recommendation()

@@ -36,7 +36,7 @@ def fetch_step_data(state: AnalysisExecutionState, runtime: Runtime[AgentContext
     """
     查询当前步骤所需的数据。
     """
-    step = state["current_step"]
+    step = state["current_step"] # 获取当前分析步骤
     if step is None:
         raise ValueError("必须先加载当前分析步骤")
     
@@ -49,7 +49,7 @@ def fetch_step_data(state: AnalysisExecutionState, runtime: Runtime[AgentContext
             return {}
         
         # 如果没有查过，就进行查询
-        query = runtime.context.query_data # 获取查询函数
+        query = runtime.context.query_data # 获取数据查询函数
 
         if query is None:
             raise DataQueryError("未配置数据查询函数")

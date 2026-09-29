@@ -41,15 +41,14 @@ class DataQueryRequest(QueryModel):
 
 
 class DatasetPayload(QueryModel):
-    dimensions: list[str]
-    metrics: list[str] = Field(min_length=1)
-    rows: list[dict[str, str | int | float | None]]
-    units: dict[str, str | None]
-    is_mock: bool
-    complete: bool
-    notice: str
-    time_dimensions: list[str] = Field(default_factory=list)
-    partition_of: str | None = None
+    dimensions: list[str] = Field(description="数据维度字段；总体数据可为空")
+    metrics: list[str] = Field(min_length=1,description="数据指标字段，至少包含一个指标")
+    rows: list[dict[str, str | int | float | None]] = Field(description="数据记录，每行字段必须与 dimensions 和 metrics 声明一致")
+    units: dict[str, str | None] = Field(description="各指标单位，未知单位使用 null")
+    is_mock: bool = Field(description="是否为模拟数据")
+    complete: bool = Field(description="数据集在声明范围内是否完整")
+    notice: str = Field(description="数据范围、限制及模拟数据等说明")
+    time_dimensions: list[str] = Field(default_factory=list,description="dimensions 中属于时间轴的字段")
 
     @model_validator(mode="after")
     def check_table(self):
@@ -60,8 +59,6 @@ class DatasetPayload(QueryModel):
             raise ValueError("必须逐指标声明单位，未知用 null")
         if len(set(self.time_dimensions)) != len(self.time_dimensions) or not set(self.time_dimensions) <= set(self.dimensions):
             raise ValueError("时间维度必须是实际维度的唯一子集")
-        if self.partition_of is not None and not self.partition_of.strip():
-            raise ValueError("整体份额说明不能为空")
         if (not self.rows or not self.complete or self.is_mock) and not self.notice.strip():
             raise ValueError("空表、部分数据和模拟数据必须说明限制")
         seen = set()

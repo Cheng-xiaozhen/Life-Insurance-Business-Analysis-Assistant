@@ -38,7 +38,7 @@ flowchart TD
 
 ## 最终 State Contract
 
-共享的 `ScenarioStep`、`ScenarioTemplate`、`DatasetRecord` 原定义移到 `agent/contracts.py`，避免父子 State 循环导入。以下定义位于 `agent/subgraphs/analysis_execution/state.py`：
+父图与子图分别在各自的 `state.py` 中完整定义状态及其嵌套类型（`ScenarioStep`、`ScenarioTemplate`、`DatasetRecord`、`StepResult`、`AnalysisExecutionResult`），便于独立阅读；两份定义保持相同字段结构，不互相导入，也不再使用共享的 `contracts.py`。以下定义位于 `agent/subgraphs/analysis_execution/state.py`：
 
 ```python
 class StepResult(TypedDict):
@@ -71,16 +71,15 @@ class AnalysisExecutionOutput(TypedDict):
 
 | 文件 | 改动 |
 | --- | --- |
-| `agent/contracts.py`（新增） | 共享模板和 DatasetRecord 定义，内容保持原契约 |
 | `agent/subgraphs/__init__.py`、`analysis_execution/__init__.py`（新增） | 子图包入口 |
-| `agent/subgraphs/analysis_execution/state.py`（新增） | 五个子图/结果契约及 current_step 读取；StepResult 删除旧结论引用字段 |
+| `agent/subgraphs/analysis_execution/state.py`（新增） | 子图状态、模板、数据集及结果类型定义和 current_step 读取；StepResult 删除旧结论引用字段 |
 | `agent/subgraphs/analysis_execution/graph.py`（新增） | 仅保留两条路由及 Graph 编排；编译子图，不创建独立 saver |
 | `agent/subgraphs/analysis_execution/nodes/initialize_subgraph.py`、`load_step.py`、`finalize_subgraph.py`（新增） | 分别负责初始化、加载校验当前步骤、组装最终结果；每个节点独立一个文件 |
 | `agent/subgraphs/analysis_execution/nodes/fetch_step_data.py`（迁移） | 原 `agent/nodes/fetch_step_data.py` 移入子图，读取 current_step，保留查询与幂等校验 |
 | `agent/subgraphs/analysis_execution/nodes/analyze_step.py`（迁移） | 原分析节点移入子图，成功后提交结论与游标，移除聊天状态更新 |
 | `agent/graph.py` | 删除内部循环节点/路由，主链改成 load_template → analysis_execution → summarize_scenario |
-| `agent/state.py` | 内部执行字段替换为 analysis_result，更新初始化 |
-| `agent/nodes/load_template.py` | 仅调整共享类型导入；加载和校验逻辑不变 |
+| `agent/state.py` | 完整定义父图状态及嵌套类型；内部执行字段替换为 analysis_result，更新初始化 |
+| `agent/nodes/load_template.py` | 类型从父图 state 导入；加载和校验逻辑不变 |
 | `agent/nodes/summarize_scenario.py` | 读取 analysis_result，传入 step_results 和按 dataset_id 去重的引用数据，拒绝无效引用 |
 | `prompts/summarize_scenario.md` | 输入与示例更新为结论加数据，保留口径、模拟来源、冲突和事实约束 |
 | `agent/nodes/recommend_charts.py` | 从 analysis_result 读取结果和数据；原数值、单位、时间维度、pie/scatter 等校验不变 |
