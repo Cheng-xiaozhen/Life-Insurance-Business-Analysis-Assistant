@@ -22,7 +22,7 @@ def query_fixture(request):
     return DataQueryResult.model_validate({"datasets": [{
         "dimensions": dimensions, "metrics": request.metrics, "rows": rows,
         "units": {m: "%" if any(word in m for word in ("率", "进度", "同比")) else "万元" for m in request.metrics},
-        "is_mock": True, "complete": True, "notice": "离线独立模拟样例，未指定年月，不代表真实全系统。",
+        "complete": True, "notice": "未指定年月，范围仅限所提供的记录。",
     }]})
 
 

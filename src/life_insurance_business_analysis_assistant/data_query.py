@@ -45,9 +45,8 @@ class DatasetPayload(QueryModel):
     metrics: list[str] = Field(min_length=1,description="数据指标字段，至少包含一个指标")
     rows: list[dict[str, str | int | float | None]] = Field(description="数据记录，每行字段必须与 dimensions 和 metrics 声明一致")
     units: dict[str, str | None] = Field(description="各指标单位，未知单位使用 null")
-    is_mock: bool = Field(description="是否为模拟数据")
     complete: bool = Field(description="数据集在声明范围内是否完整")
-    notice: str = Field(description="数据范围、限制及模拟数据等说明")
+    notice: str = Field(description="数据范围及限制说明")
     time_dimensions: list[str] = Field(default_factory=list,description="dimensions 中属于时间轴的字段")
 
     @model_validator(mode="after")
@@ -59,8 +58,8 @@ class DatasetPayload(QueryModel):
             raise ValueError("必须逐指标声明单位，未知用 null")
         if len(set(self.time_dimensions)) != len(self.time_dimensions) or not set(self.time_dimensions) <= set(self.dimensions):
             raise ValueError("时间维度必须是实际维度的唯一子集")
-        if (not self.rows or not self.complete or self.is_mock) and not self.notice.strip():
-            raise ValueError("空表、部分数据和模拟数据必须说明限制")
+        if (not self.rows or not self.complete) and not self.notice.strip():
+            raise ValueError("空表和部分数据必须说明限制")
         seen = set()
         for row in self.rows:
             if set(row) != set(fields):

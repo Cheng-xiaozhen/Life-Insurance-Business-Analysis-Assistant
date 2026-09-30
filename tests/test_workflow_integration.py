@@ -54,7 +54,7 @@ def test_workflow_integration(studio=False, chat=False):
             chart = result["chart_recommendations"][0]
             assert chart["recommended"] and chart["step_id"] == 2 and chart["data"]
             assert all(isinstance(row[chart["metrics"][0]], float) for row in chart["data"])
-            assert "模拟" in chart["description"]
+            assert chart["description"] == "仅用于离线验证"
             if studio:
                 assert result["status"] == "已完成"
                 assert result["messages"][-1].additional_kwargs["charts"] == result["chart_recommendations"]

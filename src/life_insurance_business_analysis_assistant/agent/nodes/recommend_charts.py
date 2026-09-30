@@ -1,4 +1,9 @@
-"""从各步骤已使用数据推荐图表，并在同一节点验证及组装渲染数据。"""
+"""
+基于已经完成的步骤结论和这些步骤实际使用的数据，判断是否值得推荐图表；
+如果推荐，决定图表类型、维度、指标和来源数据集；
+随后由代码校验并组装真正可供前端渲染的数据。
+LLM 负责语义判断，代码负责事实和数据约束。
+"""
 
 import json
 from datetime import date
@@ -17,23 +22,29 @@ from life_insurance_business_analysis_assistant.prompt_loader import load_prompt
 
 
 class ChartDecision(BaseModel):
+    """
+    单个图表推荐决策
+    """
     model_config = ConfigDict(extra="forbid", strict=True)
-    recommended: bool
-    chart_type: Literal["bar", "line", "pie", "scatter"] | None
-    step_id: int
-    candidate_id: str | None = None
-    dimensions: list[str]
-    metrics: list[str]
-    reason: str = Field(min_length=1)
-    description: str = Field(min_length=1)
+    recommended: bool = Field(description="是否推荐")
+    chart_type: Literal["bar", "line", "pie", "scatter"] | None = Field(description="图表类型，若不推荐则为 None")
+    step_id: int = Field(description="图表所对应的分析步骤编号")
+    candidate_id: str | None = Field(default=None,description="图表使用的数据集候选编号")
+    dimensions: list[str] = Field(description="图表使用的维度字段列表")
+    metrics: list[str] = Field(description="图表使用的指标字段列表")
+    reason: str = Field(min_length=1, description="推荐或不推荐的原因说明")
+    description: str = Field(min_length=1, description="图表的阅读说明")
 
 
 class ChartDecisions(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
-    recommendations: list[ChartDecision] = Field(min_length=1)
+    recommendations: list[ChartDecision] = Field(min_length=1,description="图表推荐决策列表")
 
 
 def chart_candidates(state: AgentState) -> list[dict]:
+    """
+    把analysis_result中被分析步骤使用过的数据，整理成一组可供LLM选择的图表候选数据
+    """
     candidates, seen = [], set()
     steps = {step["step_id"]: step for step in state["template"]["steps"]}
     for result in state["analysis_result"]["step_results"]:
@@ -44,10 +55,19 @@ def chart_candidates(state: AgentState) -> list[dict]:
             dataset = state["analysis_result"]["datasets"][dataset_id]
             if dataset["step_id"] != result["step_id"]:
                 raise ValueError("图表数据与来源步骤不匹配")
-            data = DatasetPayload.model_validate(dataset["payload"]).model_dump()
-            candidates.append({"candidate_id": f"data-{len(candidates) + 1}", "dataset_id": dataset_id,
-                               "step_id": result["step_id"], "step": steps[result["step_id"]], "conclusion": result["conclusion"], "data": data,
-                               "dimensions": data["dimensions"], "metrics": data["metrics"]})
+            data = DatasetPayload.model_validate(dataset["payload"]).model_dump() # 加载原始数据
+            candidates.append( # candidate本质上对应的是一个可供图表推荐使用的数据集
+                {
+                    "candidate_id":f"data-{len(candidates) + 1}",
+                    "dataset_id": dataset_id,
+                    "step_id": result["step_id"],
+                    "step": steps[result["step_id"]],
+                    "conclusion": result["conclusion"],
+                    "data": data, # 原始数据
+                    "dimensions": data["dimensions"], 
+                    "metrics": data["metrics"] 
+                    }
+                )
     return candidates
 
 
@@ -106,15 +126,8 @@ def assemble_chart(decision: ChartDecision, candidate: dict | None) -> dict:
     except (ValueError, TypeError) as error:
         result.update(recommended=False, chart_type=None, dimensions=[], metrics=[],
                       reason=f"无法安全组装图表：{error}", description="请阅读步骤结论及数据限制。")
-    limitations = []
-    if data.get("is_mock"):
-        limitations.append("模拟样例，不代表真实经营数据")
-    if data.get("notice"):
-        limitations.append(str(data["notice"]))
     if any(data["units"][m] is None for m in decision.metrics):
-        limitations.append("部分指标单位未知")
-    if limitations:
-        result["description"] += "（" + "；".join(dict.fromkeys(limitations)) + "）"
+        result["description"] += "（部分指标单位未知）"
     return result
 
 
@@ -124,28 +137,64 @@ def recommend_charts(state: AgentState, config: RunnableConfig) -> dict:
         raise ValueError("图表推荐需要完整的步骤结果和场景总结")
     if [r["step_id"] for r in state["analysis_result"]["step_results"]] != [s["step_id"] for s in template["steps"]]:
         raise ValueError("图表推荐的步骤结果缺失或顺序错误")
+    
     candidates = chart_candidates(state)
+    
     if not candidates:
-        return {"chart_recommendations": [assemble_chart(ChartDecision(
-            recommended=False, chart_type=None, step_id=template["steps"][-1]["step_id"],
-            dimensions=[], metrics=[], reason="没有可用于图表的步骤数据", description="请阅读分析结论。"), None)]}
+        return {
+            "chart_recommendations": [
+                assemble_chart(ChartDecision(
+                    recommended=False,
+                    chart_type=None,
+                    step_id=template["steps"][-1]["step_id"],
+                    dimensions=[],
+                    metrics=[],
+                    reason="没有可用于图表的步骤数据",
+                    description="请阅读分析结论。"
+                    ),
+                    None)
+                    ]
+                }
+    
     llm = get_llm(thinking=True)
     if llm is None:
         raise RuntimeError("图表推荐模型未配置，请设置 DEEPSEEK_API_KEY")
-    progress = AnalysisStream(state, "charts", "图表推荐", protocol=False) if state.get("analysis_id") else None
+    
+    progress = AnalysisStream(state, "charts", "图表推荐", protocol=False) if state.get("analysis_id") else None # 只在Chat模式下使用
     try:
-        raw = llm.with_structured_output(ChartDecisions, method="json_mode").invoke([
-            ("system", load_prompt("recommend_charts") + json.dumps(ChartDecisions.model_json_schema(), ensure_ascii=False)),
-            ("human", json.dumps({"scenarioInfo": {key: template[key] for key in (
+        raw = llm.with_structured_output(ChartDecisions, method="json_mode").invoke(
+            [
+                (
+                "system", 
+                 load_prompt("recommend_charts") 
+                 + json.dumps(
+                     ChartDecisions.model_json_schema(),
+                    ensure_ascii=False
+                    )
+                 ),
+                (
+                "human",
+                json.dumps(
+                    {
+                        "scenarioInfo": {key: template[key] for key in (
                                       "scenario_id", "name", "channel_type", "time_dimension", "analysis_object", "analysis_purpose")},
-                                  "analysis_purpose": template["analysis_purpose"], "summary": state["summary"],
-                                  "candidates": candidates}, ensure_ascii=False)),
-        ], config=merge_configs(config, {"tags": [TAG_NOSTREAM], "callbacks": [progress] if progress else []}),
+                        "summary": state["summary"],
+                        "candidates": candidates
+                    },
+                ensure_ascii=False
+                    )
+                ),
+        ],
+        config=merge_configs(
+            config,
+            {"tags": [TAG_NOSTREAM], "callbacks": [progress] if progress else []}),
             **({"stream": True} if progress else {}))
     finally:
         if progress:
             progress.flush()
+
     decisions = ChartDecisions.model_validate(raw)
+
     by_id = {c["candidate_id"]: c for c in candidates}
     recommendations, seen = [], set()
     valid_steps = {s["step_id"] for s in template["steps"]}
@@ -163,7 +212,15 @@ def recommend_charts(state: AgentState, config: RunnableConfig) -> dict:
         seen.add(identity)
         recommendations.append(assemble_chart(decision, candidate))
     update = {"chart_recommendations": recommendations}
+    
     if progress:
-        update.update(messages=[chat_message(state, "charts", "### 图表推荐\n\n",
-                                            reasoning="".join(progress.reasoning))])
+        update.update(
+            messages=[
+                chat_message(
+                    state,
+                    "charts", "### 图表推荐\n\n",
+                    reasoning="".join(progress.reasoning)
+                    )
+                ]
+            )
     return update
