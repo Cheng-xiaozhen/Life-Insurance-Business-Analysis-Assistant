@@ -249,10 +249,6 @@ export function Thread() {
       setInput("");
       return;
     }
-    if (reportTemplate) {
-      toast.info("报告生成流程尚未接通，已保留所选模板和问题。");
-      return;
-    }
     setFirstTokenReceived(false);
 
     const newHumanMessage: Message = {
@@ -275,6 +271,7 @@ export function Thread() {
           messages: [...toolMessages, newHumanMessage],
           context,
           question: null,
+          report_template_id: reportTemplate?.code ?? null,
         },
         {
           streamMode: ["values", "custom"],
@@ -573,12 +570,18 @@ export function Thread() {
                             handleRegenerate={handleRegenerate}
                           />
                           {message.type === "ai" &&
-                            message.id?.endsWith(":charts") && (
+                            (message.id?.endsWith(":report") ||
+                              (message.id?.endsWith(":charts") &&
+                                !messages.some(
+                                  (item) =>
+                                    item.id ===
+                                    message.id?.replace(/:charts$/, ":report"),
+                                ))) && (
                               <ReportDownload
                                 messages={messages}
-                                analysisId={message.id.slice(
-                                  0,
-                                  -":charts".length,
+                                analysisId={message.id.replace(
+                                  /:(charts|report)$/,
+                                  "",
                                 )}
                               />
                             )}
@@ -659,7 +662,7 @@ export function Thread() {
                         />
                         {reportTemplate && (
                           <p className="text-muted-foreground mt-2 text-xs">
-                            报告生成流程暂未接通；所选模板和问题会保留在当前输入区。
+                            将按所选模板生成完整报告。
                           </p>
                         )}
                       </div>

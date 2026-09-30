@@ -9,11 +9,75 @@ try {
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("http://localhost:5518/**", async (route) => {
     const url = new URL(route.request().url());
-    if (url.pathname.includes("/runs"))
-      runs.push(route.request().postDataJSON());
+    if (url.pathname.endsWith("/runs/stream")) {
+      const body = route.request().postDataJSON();
+      runs.push(body);
+      const human = body.input.messages.at(-1);
+      const markdown = "# 月度经营报告\n\n## 标保概况\n\n模拟标保分析结论。";
+      const values = {
+        messages: [
+          human,
+          {
+            type: "ai",
+            id: `${human.id}:report`,
+            content: markdown,
+            additional_kwargs: {
+              analysis: true,
+              analysis_id: human.id,
+              report: {
+                title: "月度经营报告",
+                markdown,
+                sections: [
+                  {
+                    section_id: "1",
+                    markdown: "## 标保概况\n\n模拟标保分析结论。",
+                    charts: [
+                      {
+                        recommended: true,
+                        chart_type: "bar",
+                        step_id: 1,
+                        dataset_id: "step:1:table:1",
+                        dimensions: ["机构"],
+                        metrics: ["达成率"],
+                        description: "机构达成率对比",
+                        reason: "有可比较数据",
+                        units: { 达成率: "%" },
+                        precision: { 达成率: 1 },
+                        data: [
+                          { 机构: "甲", 达成率: 80 },
+                          { 机构: "乙", 达成率: 60 },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+          {
+            type: "ai",
+            id: `${human.id}:charts`,
+            content: "图表已按章节收录于报告。",
+            additional_kwargs: { analysis: true, analysis_id: human.id },
+          },
+        ],
+        analysis_id: human.id,
+        status: "已完成",
+      };
+      await route.fulfill({
+        contentType: "text/event-stream",
+        body: `event: metadata\ndata: {"run_id":"test-run"}\n\nevent: values\ndata: ${JSON.stringify(values)}\n\nevent: end\ndata: null\n\n`,
+      });
+      return;
+    }
     await route.fulfill({
       contentType: "application/json",
-      body: url.pathname.endsWith("/info") ? "{}" : "[]",
+      body: url.pathname.endsWith("/info")
+        ? "{}"
+        : url.pathname.endsWith("/threads") &&
+            route.request().method() === "POST"
+          ? JSON.stringify({ thread_id: "test-thread" })
+          : "[]",
     });
   });
   await page.route("**/api/report-templates", (route) =>
@@ -47,14 +111,21 @@ try {
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(input).toHaveValue("分析2026年8月个险经营情况");
   await page.getByRole("button", { name: "生成报告", exact: true }).click();
+  await expect.poll(() => runs.length).toBe(1);
+  expect(runs[0].input.report_template_id).toBe("monthly");
   await expect(
-    page.getByText("报告生成流程尚未接通，已保留所选模板和问题。", {
-      exact: true,
-    }),
+    page.getByRole("heading", { name: "标保概况", exact: true }),
   ).toBeVisible();
-  await input.press("Enter");
-  await expect(input).toHaveValue("分析2026年8月个险经营情况");
-  expect(runs).toEqual([]);
+  await expect(
+    page.getByRole("button", { name: "下载报告", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("figure", { name: "步骤 1 图表" })).toBeVisible();
+  await page.getByText("查看图表数据", { exact: true }).click();
+  await expect(
+    page.getByRole("cell", { name: "80.0", exact: true }),
+  ).toBeVisible();
+  await expect(input).toHaveValue("");
+  await input.fill("分析2026年8月个险经营情况");
   await page
     .getByRole("button", { name: "更换报告模板：月度经营报告" })
     .click();
@@ -88,7 +159,7 @@ try {
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(errors).toEqual([]);
   console.log(
-    "Report picker: names only, selection/change/clear, draft preservation, no analysis submission, retry/empty and mobile passed.",
+    "Report picker: names only, selection/change/clear, report submission, section rendering/download, retry/empty and mobile passed.",
   );
 } finally {
   await browser.close();

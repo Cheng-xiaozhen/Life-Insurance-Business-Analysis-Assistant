@@ -5,8 +5,10 @@
 根据场景背景、步骤原文和请求指标，生成适合后续分析的总体表、机构明细表或时间序列表。完整覆盖请求指标，提供可供分析节点筛选、排序和统计的数据，不用最终名单或结论替代原始记录。
 
 ## 03 Context（输入上下文）
-Human Message 是 JSON，包含三个字段：
+Human Message 是 JSON，包含以下字段：
 - `scenarioInfo`：场景基本信息，包括 `scenario_id`、`name`、`channel_type`、`time_dimension`、`analysis_object`、`analysis_purpose`。
+- 报告模式以 `reportInfo` 替代 `scenarioInfo`，包含报告编码 `report_id` 及相同的基本信息；另传 `question`、`section_path` 和 `guidance`，用于理解用户要求和父板块思路。
+- 时间或范围缺失时仍必须生成模拟数据，不追问、不拒绝，不声称样例为真实经营数据。
 - `step`：当前步骤的 `step_id` 和 `text`。
 - `metrics`：本次必须返回的指标名称列表，非空且不重复。
 

@@ -32,6 +32,7 @@ export type StateType = {
   messages: Message[];
   ui?: UIMessage[];
   question?: string | null;
+  report_template_id?: string | null;
   status?: string;
   analysis_id?: string;
   execution?: Record<string, ExecutionEntry>;
@@ -56,6 +57,7 @@ const useTypedStream = useStream<
       ui?: (UIMessage | RemoveUIMessage)[] | UIMessage | RemoveUIMessage;
       context?: Record<string, unknown>;
       question?: string | null;
+      report_template_id?: string | null;
     };
     CustomEventType:
       | UIMessage

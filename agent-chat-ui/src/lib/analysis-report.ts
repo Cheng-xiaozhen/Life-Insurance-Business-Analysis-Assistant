@@ -1,8 +1,37 @@
 import type { Message } from "@langchain/langgraph-sdk";
+import { z } from "zod";
 import { getContentString } from "@/components/thread/utils";
+
+export const completeReportSchema = z.object({
+  title: z.string(),
+  markdown: z.string().min(1),
+  sections: z.array(
+    z.object({
+      section_id: z.string(),
+      markdown: z.string(),
+      charts: z.array(z.unknown()),
+    }),
+  ),
+});
 
 export function getAnalysisReport(messages: Message[], analysisId: string) {
   const prefix = `${analysisId}:`;
+  const complete = messages.find(
+    (message) => message.type === "ai" && message.id === `${prefix}report`,
+  );
+  const parsed = completeReportSchema.safeParse(
+    complete?.additional_kwargs?.report,
+  );
+  if (parsed.success && complete?.additional_kwargs?.pending !== true) {
+    const question = messages.find(
+      (message) => message.type === "human" && message.id === analysisId,
+    );
+    return {
+      title: parsed.data.title,
+      markdown: parsed.data.markdown,
+      question: question ? getContentString(question.content).trim() : "",
+    };
+  }
   const sections = messages.filter((message) => {
     if (message.type !== "ai" || !message.id?.startsWith(prefix)) return false;
     return /^(step:\d+|summary|charts)$/.test(message.id.slice(prefix.length));

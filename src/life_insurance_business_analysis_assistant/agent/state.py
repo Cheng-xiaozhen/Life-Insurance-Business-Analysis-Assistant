@@ -23,19 +23,30 @@ class ScenarioStep(TypedDict):
     text: str  # 自然语言分析说明。
     metrics: list[str]  # 本步骤需要查询的指标。
     analysis_mode: NotRequired[str | None]  # 可选分析模式，如条件筛选。
+    section_id: NotRequired[str]
+    section_path: NotRequired[list[str]]
+    local_step_id: NotRequired[int]
+    guidance: NotRequired[list[str]]
+    source_step_ids: NotRequired[list[int]]
 
 
-class ScenarioTemplate(TypedDict):
+class ExecutionTemplate(TypedDict):
     """加载器规范化后的模板快照，运行期间不修改。"""
 
-    scenario_id: str  # 场景唯一编码。
+    scenario_id: NotRequired[str]
+    report_id: NotRequired[str]
     name: str  # 场景展示名称。
     channel_type: str  # 场景适用渠道。
     time_dimension: str  # 时间粒度，如月度，不是具体年月。
     analysis_object: str  # 分析对象层级，如机构，不是具体机构范围。
     analysis_purpose: str  # 业务分析目的，如经营检视。
-    keywords: list[str]  # 用于匹配场景的触发关键词。
+    keywords: NotRequired[list[str]]
     steps: list[ScenarioStep]  # 分析步骤 已按 step_id 排序。
+    question: NotRequired[str]
+    writing_style: NotRequired[dict[str, JSONValue]]
+
+
+ScenarioTemplate = ExecutionTemplate
 
 
 class DatasetRecord(TypedDict):
@@ -118,9 +129,15 @@ class ChatState(AgentState):
     last_question: str
     status: str
     execution: Annotated[dict[str, dict], merge_execution]
+    report_template_id: str | None
+    report_id: str | None
+    report_template: dict | None
+    report_sections: list[dict]
+    report_result: dict | None
 
 
 class StudioInput(TypedDict):
+    report_template_id: NotRequired[str | None]
     question: NotRequired[str | None]
     messages: NotRequired[Annotated[list[AnyMessage], add_messages]]
 

@@ -31,6 +31,7 @@ const chartSchema = z.object({
     z.record(z.string(), z.union([z.string(), z.number().finite(), z.null()])),
   ),
   units: z.record(z.string(), z.string().nullable()),
+  precision: z.record(z.string(), z.number().int().min(0).max(10)).optional(),
 });
 
 export type AnalysisChart = z.infer<typeof chartSchema>;
@@ -48,6 +49,10 @@ export function AnalysisCharts({ value }: { value: unknown }) {
       const dimension = chart.dimensions[0];
       const metric = chart.metrics[0];
       const fields = [...chart.dimensions, ...chart.metrics];
+      const formatValue = (value: unknown, field: string) =>
+        typeof value === "number" && chart.precision?.[field] !== undefined
+          ? value.toFixed(chart.precision[field])
+          : String(value ?? "—");
       if (
         !metric ||
         (chart.chart_type !== "scatter" && !dimension) ||
@@ -81,7 +86,9 @@ export function AnalysisCharts({ value }: { value: unknown }) {
               name={other}
               unit={chart.units[other] ?? "单位未知"}
             />
-            <Tooltip />
+            <Tooltip
+              formatter={(value, name) => formatValue(value, String(name))}
+            />
             <Scatter
               data={chart.data}
               fill={colors[0]}
@@ -92,7 +99,9 @@ export function AnalysisCharts({ value }: { value: unknown }) {
       } else if (chart.chart_type === "pie") {
         plot = (
           <PieChart>
-            <Tooltip />
+            <Tooltip
+              formatter={(value, name) => formatValue(value, String(name))}
+            />
             <Legend />
             <Pie
               data={chart.data}
@@ -110,7 +119,9 @@ export function AnalysisCharts({ value }: { value: unknown }) {
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey={dimension} />
             <YAxis unit={unit} />
-            <Tooltip />
+            <Tooltip
+              formatter={(value, name) => formatValue(value, String(name))}
+            />
             <Legend />
             {chart.metrics.map((key, i) => (
               <Line
@@ -128,7 +139,9 @@ export function AnalysisCharts({ value }: { value: unknown }) {
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey={dimension} />
             <YAxis unit={unit} />
-            <Tooltip />
+            <Tooltip
+              formatter={(value, name) => formatValue(value, String(name))}
+            />
             <Legend />
             {chart.metrics.map((key, i) => (
               <Bar
@@ -187,7 +200,7 @@ export function AnalysisCharts({ value }: { value: unknown }) {
                           key={field}
                           className="p-2"
                         >
-                          {String(row[field] ?? "—")}
+                          {formatValue(row[field], field)}
                         </td>
                       ))}
                     </tr>

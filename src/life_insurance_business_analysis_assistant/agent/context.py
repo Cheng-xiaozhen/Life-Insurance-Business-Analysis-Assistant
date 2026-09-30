@@ -26,6 +26,7 @@ class AgentContext:
     template_path: str | Path | None = None  # 场景 YAML 来源，加载节点调用前提供。
     # 仅由服务端注入，不能作为 Studio 的 JSON 输入字段。
     query_data: SkipJsonSchema[QueryData | None] = None
+    report_template_path: str | Path | None = None
 
 
 def load_scenario_catalog(path: str | Path) -> list[ScenarioEntry]:

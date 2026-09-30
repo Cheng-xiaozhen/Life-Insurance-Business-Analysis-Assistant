@@ -43,6 +43,8 @@ def prepare_chat(state: ChatState):
         human = HumanMessage(content=text, id=str(uuid4()))
     return {
         **create_initial_state(text),  # 重置State，短生命周期，单次分析任务
+        "report_template_id": None, "report_id": None, "report_template": None,
+        "report_sections": [], "report_result": None,
         "messages": [human], # 消息列表累加，长生命周期，整个Thread
         "analysis_id": human.id, # 分析任务ID，用于区分同一个Chat Thread中不同分析任务
         "last_question": text, # 服务于下一次进入prepare_chat时的判断，属于聊天入口控制字段

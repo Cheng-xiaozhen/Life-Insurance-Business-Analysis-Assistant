@@ -40,6 +40,11 @@ def analyze_step(state: AnalysisExecutionState, config: RunnableConfig) -> Analy
         if any(record["step_id"] == step["step_id"] for record in state["datasets"].values()):
             raise ValueError("无指标步骤不能关联旧查询数据") # 如果这个步骤声明没有指标，但却有旧数据集关联，说明数据不一致
         conclusions = [{"step_id": r["step_id"], "conclusion": r["conclusion"]} for r in state["step_results"]] # 把之前完成步骤的结论拿出来，基于已有原子结论进行二次综合
+        if "source_step_ids" in step:
+            allowed = step["source_step_ids"]
+            if not set(allowed) <= {r["step_id"] for r in conclusions}:
+                raise ValueError("总结引用了尚未完成的步骤")
+            conclusions = [r for r in conclusions if r["step_id"] in allowed]
     
     llm = get_llm(thinking=True)
 
@@ -68,6 +73,10 @@ def analyze_step(state: AnalysisExecutionState, config: RunnableConfig) -> Analy
             ],
         "conclusions": conclusions,
     }
+    if "report_id" in template:
+        payload["report"] = payload.pop("scenario")
+        payload.update(question=template["question"], writing_style=template["writing_style"],
+                       section_path=step["section_path"], guidance=step["guidance"])
     heading = f"步骤 {step['step_id']}：{step['text']}"
     conclusion, message = stream_text(
         llm, 

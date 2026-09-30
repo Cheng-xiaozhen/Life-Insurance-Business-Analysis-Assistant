@@ -10,6 +10,14 @@ logger = logging.getLogger(__name__)
 
 def build_request(state: AnalysisExecutionState) -> DataQueryRequest:
     step, template = get_current_step(state), state["template"]
+    if "report_id" in template:
+        return DataQueryRequest.model_validate({
+            "reportInfo": {key: template[key] for key in (
+                "report_id", "name", "channel_type", "time_dimension", "analysis_object", "analysis_purpose")},
+            "question": template["question"], "section_path": step["section_path"],
+            "guidance": step["guidance"], "step": {"step_id": step["step_id"], "text": step["text"]},
+            "metrics": list(step["metrics"]),
+        })
     return DataQueryRequest.model_validate({
         "scenarioInfo": {key: template[key] for key in (
             "scenario_id", "name", "channel_type", "time_dimension", "analysis_object", "analysis_purpose"

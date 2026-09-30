@@ -45,10 +45,13 @@ def track_execution(name, node):
             "fetch_step_data": "查询数据", "analyze_step": "生成步骤分析",
             "summarize_scenario": "生成场景总结", "recommend_charts": "生成图表推荐",
             "present_charts": "分析报告已完成",
+            "load_report_template": "加载报告模板", "assemble_report": "组装完整报告",
         }
         label = labels[name]
         suffix = None
         if name in ("fetch_step_data", "analyze_step") and step:
+            if step.get("section_path"):
+                label += " · " + " / ".join(step["section_path"])
             label += f" · 步骤 {step['step_id']}：{step['text']}"
             if name == "analyze_step":
                 suffix = f"step:{step['step_id']}"
@@ -184,7 +187,7 @@ def chat_analysis_execution(subgraph, context):
         analysis_id = state["analysis_id"]
         turn = next((m.id for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), analysis_id)
         result = subgraph.invoke({"template": state["template"]},
-            merge_configs(config, {"metadata": {"analysis_chat": {
+            merge_configs(config, {"recursion_limit": max(config.get("recursion_limit", 25), 3 * len(state["template"]["steps"]) + 5), "metadata": {"analysis_chat": {
                 "analysis_id": analysis_id, "turn_id": turn,
             }}}), context=context)
         messages, execution = [], {}
@@ -197,10 +200,13 @@ def chat_analysis_execution(subgraph, context):
                 entry_id = f"{analysis_id}:{name}:{step['step_id'] - 1}:{turn}"
                 entry = {"id": entry_id, "analysis_id": analysis_id, "state": "done",
                          "label": f"{label} · 步骤 {step['step_id']}：{step['text']}"}
+                if step.get("section_path"):
+                    entry["label"] = " / ".join(step["section_path"]) + " · " + entry["label"]
                 if name == "analyze_step":
                     entry["message_id"] = f"{analysis_id}:step:{step['step_id']}"
                 else:
                     entry["label"] += " · " + "、".join(step["metrics"])
                 execution[entry_id] = entry
-        return {**result, "messages": messages, "execution": execution, "status": "正在生成场景总结"}
+        return {**result, "messages": messages, "execution": execution,
+                "status": "正在推荐图表" if state.get("report_id") else "正在生成场景总结"}
     return run

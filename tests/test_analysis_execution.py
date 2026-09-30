@@ -42,7 +42,7 @@ def test_analysis_execution():
         assert children
         for _, child in children:
             schema = child.get_context_jsonschema()
-            assert set(schema["properties"]) == {"scenario_catalog", "template_path"}
+            assert set(schema["properties"]) == {"scenario_catalog", "template_path", "report_template_path"}
             assert set(schema["$defs"]["ScenarioEntry"]["properties"]) == {
                 "scenario_id", "name", "keywords",
             }

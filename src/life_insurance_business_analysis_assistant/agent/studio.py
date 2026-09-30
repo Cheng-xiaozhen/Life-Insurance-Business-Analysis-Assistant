@@ -12,4 +12,5 @@ graph = build_chat_graph(studio_context=AgentContext(
     scenario_catalog=load_scenario_catalog(template_path),
     template_path=template_path,
     query_data=MockQueryService(get_llm(thinking=False)),
+    report_template_path=template_path.parent / "Report",
 ))

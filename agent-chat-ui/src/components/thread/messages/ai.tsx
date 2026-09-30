@@ -1,3 +1,4 @@
+import { completeReportSchema } from "@/lib/analysis-report";
 import { parsePartialJson } from "@langchain/core/output_parsers";
 import { useStreamContext } from "@/providers/Stream";
 import { AIMessage, Checkpoint, Message } from "@langchain/langgraph-sdk";
@@ -147,6 +148,23 @@ export function AssistantMessage({
     );
   const hasAnthropicToolCalls = !!anthropicStreamedToolCalls?.length;
   const isToolResult = message?.type === "tool";
+  const report = completeReportSchema.safeParse(
+    message?.additional_kwargs?.report,
+  );
+  const analysisId = message?.additional_kwargs?.analysis_id;
+  const hasCompleteReport =
+    typeof analysisId === "string" &&
+    thread.messages.some(
+      (item) =>
+        item.id === `${analysisId}:report` &&
+        completeReportSchema.safeParse(item.additional_kwargs?.report).success,
+    );
+  if (
+    hasCompleteReport &&
+    !report.success &&
+    message?.additional_kwargs?.analysis === true
+  )
+    return null;
 
   if (isToolResult && hideToolCalls) {
     return null;
@@ -173,10 +191,22 @@ export function AssistantMessage({
           </>
         ) : (
           <>
-            {contentString.length > 0 && (
-              <div className="py-1">
-                <MarkdownText>{deferredContent}</MarkdownText>
+            {report.success ? (
+              <div className="w-full space-y-4">
+                <h1 className="text-2xl font-semibold">{report.data.title}</h1>
+                {report.data.sections.map((section) => (
+                  <section key={section.section_id}>
+                    <MarkdownText>{section.markdown}</MarkdownText>
+                    <AnalysisCharts value={section.charts} />
+                  </section>
+                ))}
               </div>
+            ) : (
+              contentString.length > 0 && (
+                <div className="py-1">
+                  <MarkdownText>{deferredContent}</MarkdownText>
+                </div>
+              )
             )}
             {message?.additional_kwargs?.pending !== true && (
               <AnalysisCharts value={message?.additional_kwargs?.charts} />

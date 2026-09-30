@@ -133,7 +133,8 @@ def assemble_chart(decision: ChartDecision, candidate: dict | None) -> dict:
 
 def recommend_charts(state: AgentState, config: RunnableConfig) -> dict:
     template = state["template"]
-    if template is None or not state["summary"] or state["clarification"] or state["analysis_result"] is None:
+    is_report = template is not None and "report_id" in template
+    if template is None or (not is_report and not state["summary"]) or state["clarification"] or state["analysis_result"] is None:
         raise ValueError("图表推荐需要完整的步骤结果和场景总结")
     if [r["step_id"] for r in state["analysis_result"]["step_results"]] != [s["step_id"] for s in template["steps"]]:
         raise ValueError("图表推荐的步骤结果缺失或顺序错误")
@@ -176,9 +177,11 @@ def recommend_charts(state: AgentState, config: RunnableConfig) -> dict:
                 "human",
                 json.dumps(
                     {
-                        "scenarioInfo": {key: template[key] for key in (
-                                      "scenario_id", "name", "channel_type", "time_dimension", "analysis_object", "analysis_purpose")},
+                        ("reportInfo" if is_report else "scenarioInfo"): {key: template[key] for key in (
+                                      ("report_id" if is_report else "scenario_id"), "name", "channel_type", "time_dimension", "analysis_object", "analysis_purpose")},
                         "summary": state["summary"],
+                        "step_results": state["analysis_result"]["step_results"],
+                        "writing_style": template.get("writing_style", {}),
                         "candidates": candidates
                     },
                 ensure_ascii=False

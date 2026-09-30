@@ -9,7 +9,7 @@ from tempfile import NamedTemporaryFile
 from uuid import uuid4
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 
 class TemplateModel(BaseModel):
@@ -20,7 +20,7 @@ class Analysis(TemplateModel):
     id: str = Field(default_factory=lambda: str(uuid4()), exclude=True)
     text: str = Field(alias="分析步骤", min_length=1)
     metrics: list[str] = Field(alias="关联指标")
-    mode: str = Field(alias="分析模式")
+    mode: str = Field(default="", alias="分析模式")
 
 
 class Subchapter(TemplateModel):
@@ -31,7 +31,7 @@ class Subchapter(TemplateModel):
 
 class Chapter(Analysis):
     name: str = Field(alias="板块名称", min_length=1)
-    text: str = Field(alias="分析逻辑", min_length=1)
+    text: str = Field(alias="分析步骤", validation_alias=AliasChoices("分析步骤", "分析逻辑", "text"), min_length=1)
     children: list[Subchapter] = Field(alias="子板块")
 
 
@@ -76,10 +76,10 @@ def read_report(file: Path) -> Report:
     style = raw.pop("写作风格与格式要求")
     for chapter in raw["章节板块"]:
         for child in chapter["子板块"]:
-            for step in child["分析步骤"]:
-                if type(step.pop("步骤序号")) is not int:
-                    raise ValueError("步骤序号必须为整数")
-                # 排列顺序是步骤的实际顺序，保存时重新编号。
+            for index, step in enumerate(child["分析步骤"], 1):
+                number = step.pop("步骤序号")
+                if type(number) is not int or number != index:
+                    raise ValueError("步骤序号必须从 1 连续递增并与排列顺序一致")
     report = Report.model_validate({**raw, **style})
     if file.name != f"{report.code}.yaml":
         raise ValueError(f"文件名必须与报告编码一致：{file.name}")

@@ -20,6 +20,7 @@ from life_insurance_business_analysis_assistant.agent.nodes.no_match import no_m
 from life_insurance_business_analysis_assistant.agent.nodes.prepare_chat import prepare_chat
 from life_insurance_business_analysis_assistant.agent.nodes.present_clarification import present_clarification
 from life_insurance_business_analysis_assistant.agent.nodes.present_charts import present_charts
+from life_insurance_business_analysis_assistant.agent.nodes.report import prepare_report, load_report_template, assemble_report
 
 
 def route_match(state: AgentState) -> Literal["no_match", "confirm"]:
@@ -73,22 +74,30 @@ def build_chat_graph(*, studio_context: AgentContext):
         graph.add_node(name, track_execution(name, node), input_schema=ChatState)
         
     graph.add_node("prepare_chat", prepare_chat)
+    graph.add_node("prepare_report", prepare_report)
+    graph.add_node("load_report_template", track_execution("load_report_template",
+        lambda state, config: load_report_template(state, Runtime(context=studio_context))))
+    graph.add_node("assemble_report", track_execution("assemble_report", lambda state, config: assemble_report(state)))
     for name, node in (("present_clarification", present_clarification), ("no_match", no_match),
                        ("present_charts", present_charts)):
         graph.add_node(name, track_execution(name, lambda state, config, node=node: node(state)))
         
-    graph.add_edge(START, "prepare_chat")
+    graph.add_conditional_edges(START, lambda state: "prepare_report" if state.get("report_template_id") is not None else "prepare_chat",
+                                ["prepare_report", "prepare_chat"])
+    graph.add_edge("prepare_report", "load_report_template")
+    graph.add_edge("load_report_template", "analysis_execution")
+    graph.add_edge("assemble_report", END)
     graph.add_edge("prepare_chat", "match_scenario")
     graph.add_edge("present_clarification", "clarify")
     graph.add_edge("no_match", END)
     graph.add_edge("present_charts", END)
     _add_analysis_edges(graph, clarify_target="present_clarification",
-                        no_match_target="no_match", charts_target="present_charts")
+                        no_match_target="no_match", charts_target="present_charts", reports=True)
     # Studio 的检查点由 Agent Server 提供，不能额外创建本地 saver。
     return graph.compile()
 
 
-def _add_analysis_edges(graph: StateGraph, *, clarify_target: str, no_match_target: str, charts_target: str):
+def _add_analysis_edges(graph: StateGraph, *, clarify_target: str, no_match_target: str, charts_target: str, reports=False):
     """两种入口共用业务路线，追问和结束位置由各入口指定。"""
     graph.add_conditional_edges("match_scenario", route_match, {
         "no_match": no_match_target,
@@ -96,6 +105,16 @@ def _add_analysis_edges(graph: StateGraph, *, clarify_target: str, no_match_targ
     })
     graph.add_conditional_edges("clarify", route_clarify)
     graph.add_edge("load_template", "analysis_execution")
-    graph.add_edge("analysis_execution", "summarize_scenario")
+    if reports:
+        graph.add_conditional_edges("analysis_execution",
+            lambda state: "recommend_charts" if state.get("report_id") else "summarize_scenario",
+            ["recommend_charts", "summarize_scenario"])
+    else:
+        graph.add_edge("analysis_execution", "summarize_scenario")
     graph.add_edge("summarize_scenario", "recommend_charts")
-    graph.add_edge("recommend_charts", charts_target)
+    if reports:
+        graph.add_conditional_edges("recommend_charts",
+            lambda state: "assemble_report" if state.get("report_id") else charts_target,
+            ["assemble_report", charts_target])
+    else:
+        graph.add_edge("recommend_charts", charts_target)

@@ -12,6 +12,7 @@
 
 - `scenarioInfo`：场景编码、名称、渠道、时间粒度、分析对象及 `analysis_purpose`（分析目的）。
 - `summary`：已生成的场景总结。
+- 报告模式以 `reportInfo` 替代 `scenarioInfo`，`summary` 为空，直接根据 `step_results` 和候选中的步骤结论推荐，不要求额外总结。`writing_style` 约束说明文字；数值和原始单位仍以候选数据为准。
 - `candidates`：所有步骤实际使用的数据集候选，已按 `dataset_id` 去重。
 
 每个候选包含 `candidate_id`、`dataset_id`、`step_id`、`step`（步骤配置）、`conclusion`（步骤结论）、`data` 以及允许使用的 `dimensions`、`metrics`。`data` 包含记录 `rows`、指标单位 `units`、完整性 `complete`、范围与限制 `notice`、显式时间维度 `time_dimensions`。

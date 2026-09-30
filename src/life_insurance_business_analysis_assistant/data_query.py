@@ -27,14 +27,30 @@ class QueryStep(QueryModel):
     text: str = Field(min_length=1,description="分析步骤描述")
 
 
+class ReportInfo(QueryModel):
+    report_id: str
+    name: str
+    channel_type: str
+    time_dimension: str
+    analysis_object: str
+    analysis_purpose: str
+
+
 class DataQueryRequest(QueryModel):
-    scenarioInfo: ScenarioInfo = Field(description="场景基本信息")
+    scenarioInfo: ScenarioInfo | None = Field(default=None, description="场景基本信息")
+    reportInfo: ReportInfo | None = None
+    question: str | None = None
+    section_path: list[str] = Field(default_factory=list)
+    guidance: list[str] = Field(default_factory=list)
     step: QueryStep = Field(description="分析步骤信息")
     metrics: list[str] = Field(min_length=1, description="关联指标列表")
 
     @model_validator(mode="after")
     def check_fields(self):
-        strings = [*self.scenarioInfo.model_dump().values(), self.step.text, *self.metrics]
+        if (self.scenarioInfo is None) == (self.reportInfo is None):
+            raise ValueError("必须且只能提供场景或报告基本信息之一")
+        info = self.scenarioInfo or self.reportInfo
+        strings = [*info.model_dump().values(), self.step.text, *self.metrics, *self.section_path, *self.guidance]
         if any(not value.strip() for value in strings) or len(set(self.metrics)) != len(self.metrics):
             raise ValueError("请求文本不能为空，指标不能重复")
         return self
