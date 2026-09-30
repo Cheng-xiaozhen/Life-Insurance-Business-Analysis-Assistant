@@ -3,8 +3,9 @@
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
-from life_insurance_business_analysis_assistant.agent.graph import build_analysis_graph, build_chat_graph
-from life_insurance_business_analysis_assistant.agent.state import create_initial_state
+from life_insurance_business_analysis_assistant.agent.graph import build_chat_graph
+from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.graph import build_analysis_graph
+from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.state import create_initial_state
 from workflow_support import context, models, patched_models, payload
 
 

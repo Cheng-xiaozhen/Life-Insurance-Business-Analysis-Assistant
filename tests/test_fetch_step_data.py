@@ -3,9 +3,10 @@ from workflow_support import execution_state
 from copy import deepcopy
 from unittest import TestCase
 from langgraph.runtime import Runtime
-from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.nodes.fetch_step_data import fetch_step_data, build_request
-from life_insurance_business_analysis_assistant.agent.nodes.load_template import load_template
-from life_insurance_business_analysis_assistant.agent.state import create_initial_state
+from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.subgraphs.analysis_execution.nodes.fetch_step_data import fetch_step_data
+from life_insurance_business_analysis_assistant.agent.shared.execution import build_request
+from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.nodes.load_template import load_template
+from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.state import create_initial_state
 from life_insurance_business_analysis_assistant.data_query import DataQueryError
 from workflow_support import context
 
@@ -41,13 +42,13 @@ def test_fetch_step_data():
     bad[1]["rows"][0][request.metrics[-1]] = float("nan")
     for response in (None, {"datasets": []}, {"datasets": bad}, {"datasets": [tables[0]]}):
         ctx.query_data.return_value = response
-        with TestCase().assertLogs("life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.nodes.fetch_step_data", level="ERROR"):
+        with TestCase().assertLogs("life_insurance_business_analysis_assistant.agent.shared.execution", level="ERROR"):
             with TestCase().assertRaises(DataQueryError):
                 fetch_step_data(before, runtime)
         assert before["datasets"] == {} and before["step_index"] == 0
     changed = deepcopy(state)
     changed["template"]["steps"][0]["text"] += "改变请求"
-    with TestCase().assertLogs("life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.nodes.fetch_step_data", level="ERROR"):
+    with TestCase().assertLogs("life_insurance_business_analysis_assistant.agent.shared.execution", level="ERROR"):
         with TestCase().assertRaises(DataQueryError):
             fetch_step_data(changed, runtime)
     print("request whitelist, multi-table atomic save, retry and isolation: PASS")

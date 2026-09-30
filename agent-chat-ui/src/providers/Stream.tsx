@@ -26,6 +26,16 @@ import { getApiKey } from "@/lib/api-key";
 import { useThreads } from "./Thread";
 import { toast } from "sonner";
 import type { ExecutionEntry } from "@/components/thread/execution-pane";
+import {
+  activeBusinessValues,
+  mergeMessages,
+  reportMessage,
+  updateReport,
+  type BusinessValues,
+  type ReportEvent,
+  type ReportView,
+} from "@/lib/report-stream";
+import { completeReportSchema } from "@/lib/analysis-report";
 import type { AnalysisChart } from "@/components/thread/analysis-charts";
 
 export type StateType = {
@@ -62,6 +72,7 @@ const useTypedStream = useStream<
     CustomEventType:
       | UIMessage
       | RemoveUIMessage
+      | ReportEvent
       | AnalysisDelta
       | { type: "analysis_progress"; entry: ExecutionEntry };
   }
@@ -110,6 +121,11 @@ const StreamSession = ({
 }) => {
   const [threadId, setThreadId] = useQueryState("threadId");
   const { getThreads, setThreads } = useThreads();
+  const [liveReport, setLiveReport] = useState<ReportView | null>(null);
+  const [recovered, setRecovered] = useState<{
+    threadId: string;
+    values: BusinessValues;
+  } | null>(null);
   const streamValue = useTypedStream({
     apiUrl,
     apiKey: apiKey ?? undefined,
@@ -124,7 +140,27 @@ const StreamSession = ({
     reconnectOnMount: true,
     // SDK 的数字 throttle 实际采用防抖；连续流使用零延迟批处理，避免等到流结束才刷新。
     throttle: true,
+    onUpdateEvent: (updates, options) => {
+      for (const update of Object.values(updates)) {
+        if (!update || typeof update !== "object") continue;
+        const values = update as Partial<BusinessValues>;
+        if (!values.messages && !values.execution) continue;
+        options.mutate((previous) => ({
+          ...previous,
+          messages: mergeMessages(
+            previous.messages ?? [],
+            values.messages ?? [],
+          ),
+          execution: { ...previous.execution, ...values.execution },
+          status: values.status ?? previous.status,
+        }));
+      }
+    },
     onCustomEvent: (event, options) => {
+      if (event.type === "report_snapshot" || event.type === "report_step") {
+        setLiveReport((previous) => updateReport(previous, event));
+        return;
+      }
       if (event.type === "analysis_progress") {
         options.mutate((prev) => ({
           ...prev,
@@ -178,6 +214,87 @@ const StreamSession = ({
     },
   });
 
+  const head = streamValue.history[0];
+  const pendingCheckpoint = head?.next.length
+    ? head.checkpoint.checkpoint_id
+    : null;
+  const client = streamValue.client;
+  const threadLoading = streamValue.isThreadLoading;
+  const loading = streamValue.isLoading;
+  useEffect(() => {
+    if (!threadId || threadLoading || !pendingCheckpoint) return;
+    let cancelled = false;
+    // 子图未结束时父图只有入口状态；恢复持久化的业务子图快照。
+    client.threads
+      .getState<BusinessValues>(threadId, undefined, { subgraphs: true })
+      .then((snapshot) => {
+        if (cancelled) return;
+        const values = activeBusinessValues(snapshot);
+        setRecovered({ threadId, values });
+        const message = values.messages?.find(
+          (item) => item.id === `${values.analysis_id}:report`,
+        );
+        const report = message?.additional_kwargs?.report;
+        if (report) {
+          setLiveReport((previous) =>
+            updateReport(previous, {
+              type: "report_snapshot",
+              report,
+            }),
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) toast.error("恢复已保存的报告内容失败，请刷新重试。");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, threadId, pendingCheckpoint, threadLoading, loading]);
+
+  let visibleValues = streamValue.values;
+  if (
+    pendingCheckpoint &&
+    recovered?.threadId === threadId &&
+    recovered.values.analysis_id === visibleValues.analysis_id
+  ) {
+    visibleValues = {
+      ...visibleValues,
+      ...recovered.values,
+      messages: mergeMessages(
+        recovered.values.messages ?? [],
+        visibleValues.messages ?? [],
+      ),
+      execution: { ...recovered.values.execution, ...visibleValues.execution },
+    };
+  }
+  if (
+    liveReport?.report_id &&
+    liveReport.report_id === visibleValues.analysis_id
+  ) {
+    const saved = visibleValues.messages?.find(
+      (item) => item.id === `${liveReport.report_id}:report`,
+    );
+    const parsed = completeReportSchema.safeParse(
+      saved?.additional_kwargs?.report,
+    );
+    const report =
+      parsed.success && parsed.data.revision > liveReport.revision
+        ? parsed.data
+        : liveReport;
+    visibleValues = {
+      ...visibleValues,
+      messages: mergeMessages(visibleValues.messages ?? [], [
+        reportMessage(report),
+      ]),
+    };
+  }
+  // SDK 属性含非枚举 getter；保留原对象能力，只覆盖展示视图。
+  const visibleStream: StreamContextType = Object.create(streamValue, {
+    values: { value: visibleValues },
+    messages: { value: visibleValues.messages ?? streamValue.messages },
+  });
+
   useEffect(() => {
     checkGraphStatus(apiUrl, apiKey, authScheme).then((ok) => {
       if (!ok) {
@@ -197,7 +314,7 @@ const StreamSession = ({
   }, [apiKey, apiUrl, authScheme]);
 
   return (
-    <StreamContext.Provider value={streamValue}>
+    <StreamContext.Provider value={visibleStream}>
       {children}
     </StreamContext.Provider>
   );

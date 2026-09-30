@@ -20,16 +20,25 @@ from langgraph.runtime import Runtime
 
 from life_insurance_business_analysis_assistant.agent.context import AgentContext
 from life_insurance_business_analysis_assistant.agent.llm import get_llm
-from life_insurance_business_analysis_assistant.agent.nodes.load_template import load_template
-from life_insurance_business_analysis_assistant.agent.nodes.recommend_charts import ChartDecisions
-from life_insurance_business_analysis_assistant.agent.state import create_initial_state
+from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.nodes.load_template import load_template
+from life_insurance_business_analysis_assistant.agent.shared.charts import ChartDecisions
+from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.state import create_initial_state
 from life_insurance_business_analysis_assistant.prompt_loader import load_prompt
 
 ROOT = Path(__file__).resolve().parents[1]
 NODES = ("analyze_step", "summarize_scenario", "recommend_charts")
-MODULES = {name: import_module(
-    f"life_insurance_business_analysis_assistant.agent.{'subgraphs.analysis_execution.nodes' if name == 'analyze_step' else 'nodes'}.{name}"
-) for name in NODES}
+MODULES = {name: import_module(f"life_insurance_business_analysis_assistant.agent.{module}")
+           for name, module in {
+               "analyze_step": "shared.execution",
+               "recommend_charts": "shared.charts",
+               "summarize_scenario": "subgraphs.question_answer.nodes.summarize_scenario",
+           }.items()}
+NODES_BY_NAME = {name: getattr(import_module(f"life_insurance_business_analysis_assistant.agent.{module}"), name)
+                for name, module in {
+                    "analyze_step": "subgraphs.question_answer.subgraphs.analysis_execution.nodes.analyze_step",
+                    "recommend_charts": "subgraphs.question_answer.nodes.recommend_charts",
+                    "summarize_scenario": "subgraphs.question_answer.nodes.summarize_scenario",
+                }.items()}
 
 
 def run_case(case, model, prompt):
@@ -66,7 +75,7 @@ def run_case(case, model, prompt):
                  "notice": data.get("notice", "离线契约样本；空表或缺失值不能解释成零"),
                  "time_dimensions": data.get("time_dimensions", []), "partition_of": data.get("partition_of")}
         template["steps"] = [{**payload["step"], "metrics": metrics}]
-        from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.nodes.fetch_step_data import build_request
+        from life_insurance_business_analysis_assistant.agent.shared.execution import build_request
         state.update(step_index=0, current_step=template["steps"][0], datasets={}, step_results=[])
         key = f"step:{payload['step']['step_id']}:table:1"
         state["datasets"] = {key: {"step_id": payload["step"]["step_id"], "request": build_request(state).model_dump(), "payload": table}}
@@ -81,7 +90,7 @@ def run_case(case, model, prompt):
     module = MODULES[name]
     with patch.object(module, "get_llm", return_value=model), \
          patch.object(module, "load_prompt", return_value=prompt):
-        update = getattr(module, name)(state, {})
+        update = NODES_BY_NAME[name](state, {})
     assert state == before, "节点不得原地修改状态"
     return update
 

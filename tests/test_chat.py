@@ -33,7 +33,7 @@ def test_chat():
         interrupt = paused["__interrupt__"][0]
         assert interrupt.value["kind"] == "scenario_selection"
         events = []
-        with TestCase().assertLogs("life_insurance_business_analysis_assistant.agent.chat", level="ERROR"):
+        with TestCase().assertLogs("life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.presentation", level="ERROR"):
             try:
                 for event in graph.stream(Command(resume={interrupt.id: "standard_premium_review"}), config, stream_mode=["custom", "values", "messages"], subgraphs=True):
                     events.append(event[1:])
@@ -42,8 +42,10 @@ def test_chat():
             else:
                 raise AssertionError("模拟中断应抛出异常")
         saved = graph.get_state(config, subgraphs=True)
-        assert saved.next == ("analysis_execution",)
-        child = saved.tasks[0].state
+        assert saved.next == ("question_answer",)
+        question_answer = saved.tasks[0].state
+        assert question_answer.next == ("analysis_execution",)
+        child = question_answer.tasks[0].state
         assert child.next == ("analyze_step",)
         assert child.values["step_index"] == 1 and len(child.values["step_results"]) == 1
         assert len(child.values["datasets"]) == 2

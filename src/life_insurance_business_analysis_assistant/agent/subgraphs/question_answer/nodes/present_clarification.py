@@ -1,10 +1,10 @@
 """将当前追问呈现为聊天消息。"""
 
-from life_insurance_business_analysis_assistant.agent.chat import chat_message
-from life_insurance_business_analysis_assistant.agent.state import ChatState
+from life_insurance_business_analysis_assistant.agent.shared.messages import chat_message
+from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.state import QuestionAnswerState
 
 
-def present_clarification(state: ChatState):
+def present_clarification(state: QuestionAnswerState):
     """
     纯粹的Chat UI展示节点，负责把业务节点的Clarification转化为聊天消息，供前端展示。
     """

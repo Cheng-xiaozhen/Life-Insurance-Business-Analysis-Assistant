@@ -4,9 +4,9 @@ from copy import deepcopy
 from unittest import TestCase
 from unittest.mock import Mock
 from langgraph.runtime import Runtime
-from life_insurance_business_analysis_assistant.agent.state import create_initial_state
-from life_insurance_business_analysis_assistant.agent.nodes.load_template import load_template
-from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.nodes.fetch_step_data import build_request
+from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.state import create_initial_state
+from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.nodes.load_template import load_template
+from life_insurance_business_analysis_assistant.agent.shared.execution import build_request
 from life_insurance_business_analysis_assistant.data_query import DataQueryRequest, DataQueryError, validate_result
 from life_insurance_business_analysis_assistant.mock_query_service import MockQueryService
 from workflow_support import context, query_fixture
@@ -80,9 +80,8 @@ def test_data_query():
 
 def test_pie_recommendation():
     from unittest.mock import patch
-    from life_insurance_business_analysis_assistant.agent.nodes.recommend_charts import (
-        ChartDecision, assemble_chart, chart_candidates, recommend_charts,
-    )
+    from life_insurance_business_analysis_assistant.agent.shared.charts import ChartDecision, assemble_chart, chart_candidates
+    from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.nodes.recommend_charts import recommend_charts
 
     state = create_initial_state("机构标保构成")
     state["scenario_id"] = "standard_premium_review"
@@ -103,7 +102,7 @@ def test_pie_recommendation():
                              description="展示甲、乙两个机构的标保构成。")
     model = Mock()
     model.with_structured_output.return_value.invoke.return_value = {"recommendations": [decision.model_dump()]}
-    with patch("life_insurance_business_analysis_assistant.agent.nodes.recommend_charts.get_llm", return_value=model):
+    with patch("life_insurance_business_analysis_assistant.agent.shared.charts.get_llm", return_value=model):
         chart = recommend_charts(state, {})["chart_recommendations"][0]
     assert chart["recommended"] and chart["chart_type"] == "pie" and chart["data"] == data["rows"]
     assert chart["description"] == decision.description

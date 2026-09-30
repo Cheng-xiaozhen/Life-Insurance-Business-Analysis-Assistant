@@ -12,14 +12,14 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 
 from life_insurance_business_analysis_assistant.agent.context import AgentContext, load_scenario_catalog
-from life_insurance_business_analysis_assistant.agent.graph import build_analysis_graph
-from life_insurance_business_analysis_assistant.agent.nodes.load_template import load_template
-from life_insurance_business_analysis_assistant.agent.nodes.summarize_scenario import summarize_scenario
-from life_insurance_business_analysis_assistant.agent.state import AgentState, create_initial_state
+from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.graph import build_analysis_graph
+from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.nodes.load_template import load_template
+from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.nodes.summarize_scenario import summarize_scenario
+from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.state import AgentState, create_initial_state
 
 
-@patch("life_insurance_business_analysis_assistant.agent.nodes.recommend_charts.get_llm")
-@patch("life_insurance_business_analysis_assistant.agent.nodes.summarize_scenario.get_llm")
+@patch("life_insurance_business_analysis_assistant.agent.shared.charts.get_llm")
+@patch("life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.nodes.summarize_scenario.get_llm")
 def test_summarize_scenario(get_llm, chart_llm):
     chart_model = Mock()
     chart_model.with_structured_output.return_value.invoke.return_value = {"recommended": False, "chart_type": None, "step_id": 1, "dimensions": [], "metrics": [], "reason": "数据不足", "description": "阅读结论"}

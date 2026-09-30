@@ -1,14 +1,12 @@
 """在小规模场景目录中做语义匹配；所有候选都需要用户确认。"""
 
 import json
-
 from langgraph.constants import TAG_NOSTREAM
 from langgraph.runtime import Runtime
 from pydantic import BaseModel, ConfigDict, Field
-
 from life_insurance_business_analysis_assistant.agent.context import AgentContext
 from life_insurance_business_analysis_assistant.agent.llm import get_llm
-from life_insurance_business_analysis_assistant.agent.state import AgentState, Clarification, ScenarioCandidate
+from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.state import AgentState, Clarification, ScenarioCandidate
 from life_insurance_business_analysis_assistant.prompt_loader import load_prompt
 
 

@@ -1,12 +1,11 @@
 """呈现完整图表推荐并结束本次分析。"""
 
 from langgraph.config import get_stream_writer
+from life_insurance_business_analysis_assistant.agent.shared.messages import chat_message
+from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.state import QuestionAnswerState
 
-from life_insurance_business_analysis_assistant.agent.chat import chat_message
-from life_insurance_business_analysis_assistant.agent.state import ChatState
 
-
-def present_charts(state: ChatState):
+def present_charts(state: QuestionAnswerState):
     decisions = state["chart_recommendations"]
     sections = []
     for decision in decisions:

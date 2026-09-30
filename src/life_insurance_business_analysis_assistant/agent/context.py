@@ -1,6 +1,6 @@
 """节点使用的运行上下文及 POC 场景目录读取。"""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from pydantic.json_schema import SkipJsonSchema
 from typing_extensions import TypedDict
@@ -22,7 +22,8 @@ class ScenarioEntry(TypedDict):
 class AgentContext:
     """调用工作流前准备，不写入业务 State。"""
 
-    scenario_catalog: list[ScenarioEntry]
+    # Chat UI 可传空上下文；业务节点使用服务端注入的场景目录。
+    scenario_catalog: list[ScenarioEntry] = field(default_factory=list)
     template_path: str | Path | None = None  # 场景 YAML 来源，加载节点调用前提供。
     # 仅由服务端注入，不能作为 Studio 的 JSON 输入字段。
     query_data: SkipJsonSchema[QueryData | None] = None

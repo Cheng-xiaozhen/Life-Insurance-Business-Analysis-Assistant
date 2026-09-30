@@ -168,7 +168,7 @@ export function Thread() {
       await stream.submit(undefined, {
         command: { resume: { [analysisInterrupt.id]: reply.trim() } },
         checkpoint: null,
-        streamMode: ["values", "custom"],
+        streamMode: ["values", "updates", "custom"],
         streamSubgraphs: true,
         streamResumable: true,
         multitaskStrategy: "reject",
@@ -274,7 +274,7 @@ export function Thread() {
           report_template_id: reportTemplate?.code ?? null,
         },
         {
-          streamMode: ["values", "custom"],
+          streamMode: ["values", "updates", "custom"],
           streamSubgraphs: true,
           streamResumable: true,
           multitaskStrategy: "reject",
@@ -306,7 +306,7 @@ export function Thread() {
     setFirstTokenReceived(false);
     stream.submit(undefined, {
       checkpoint: parentCheckpoint,
-      streamMode: ["values"],
+      streamMode: ["values", "updates", "custom"],
       streamSubgraphs: true,
       streamResumable: true,
     });
@@ -329,7 +329,7 @@ export function Thread() {
           submitting.current = true;
           void stream
             .submit(null, {
-              streamMode: ["values", "custom"],
+              streamMode: ["values", "updates", "custom"],
               streamSubgraphs: true,
               streamResumable: true,
               multitaskStrategy: "reject",

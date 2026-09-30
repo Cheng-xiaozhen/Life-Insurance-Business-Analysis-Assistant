@@ -1,10 +1,11 @@
 """校验聊天输入并初始化本次分析。"""
 
 from uuid import uuid4
-
 from langchain_core.messages import HumanMessage
-
-from life_insurance_business_analysis_assistant.agent.state import ChatState, create_initial_state
+from life_insurance_business_analysis_assistant.agent.state import ChatState
+from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.state import create_initial_state
+import re
+from life_insurance_business_analysis_assistant.report_store import Report
 
 
 def message_text(message: HumanMessage) -> str:
@@ -50,3 +51,19 @@ def prepare_chat(state: ChatState):
         "last_question": text, # 服务于下一次进入prepare_chat时的判断，属于聊天入口控制字段
         "status": "正在匹配场景",# 下一步状态
     }
+
+
+def prepare_report(state):
+    code = state.get("report_template_id")
+    if not isinstance(code, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,99}", code):
+        raise ValueError("请选择有效的报告模板")
+    Report.valid_filename(code)
+    update = prepare_chat(state)
+    return {**update, "report_template_id": code, "report_id": update["analysis_id"],
+            "status": "正在加载报告模板"}
+
+
+def prepare_request(state: ChatState):
+    if state.get("report_template_id") is not None:
+        return prepare_report(state)
+    return prepare_chat(state)

@@ -9,9 +9,9 @@ from langchain_deepseek import ChatDeepSeek
 from langgraph.graph import START, END, StateGraph
 from langgraph.checkpoint.memory import InMemorySaver
 
-from life_insurance_business_analysis_assistant.agent.chat import AnalysisStream, chat_message, stream_text
+from life_insurance_business_analysis_assistant.agent.shared.messages import AnalysisStream, chat_message, stream_text
 from life_insurance_business_analysis_assistant.agent.state import ChatState
-from life_insurance_business_analysis_assistant.agent.nodes.recommend_charts import ChartDecision
+from life_insurance_business_analysis_assistant.agent.shared.charts import ChartDecision
 
 
 def test_stream_progress():
@@ -38,8 +38,8 @@ def test_stream_progress():
         del result.get_final_completion
         return result
 
-    with patch("life_insurance_business_analysis_assistant.agent.chat.get_stream_writer", return_value=events.append), \
-         patch("life_insurance_business_analysis_assistant.agent.chat.monotonic", side_effect=lambda: next(clock) * 0.04):
+    with patch("life_insurance_business_analysis_assistant.agent.shared.messages.get_stream_writer", return_value=events.append), \
+         patch("life_insurance_business_analysis_assistant.agent.shared.messages.monotonic", side_effect=lambda: next(clock) * 0.04):
         client.create.return_value = response("整体总结")
         text, message = stream_text(model, "总结", {}, {"analysis_id": "q1"}, "summary", "场景总结")
         assert text == "整体总结"
@@ -63,7 +63,7 @@ def test_stream_progress():
 
         # 连续短片段合并发送，末尾不足一个周期的内容仍需刷新。
         events.clear()
-        with patch("life_insurance_business_analysis_assistant.agent.chat.monotonic", return_value=0):
+        with patch("life_insurance_business_analysis_assistant.agent.shared.messages.monotonic", return_value=0):
             progress = AnalysisStream({"analysis_id": "q1"}, "summary", "场景总结")
             for _ in range(100):
                 progress.push("text", "字")
@@ -96,7 +96,7 @@ def test_stream_progress():
         assert saved.content == "整体总结"
         assert saved.additional_kwargs["reasoning"] == "先核对指标再比较趋势"
 
-    with patch("life_insurance_business_analysis_assistant.agent.chat.monotonic", side_effect=lambda: next(clock) * 0.04):
+    with patch("life_insurance_business_analysis_assistant.agent.shared.messages.monotonic", side_effect=lambda: next(clock) * 0.04):
         asyncio.run(consume())
     print("reasoning before text, summary deltas, structured chart streaming and batching: PASS")
 

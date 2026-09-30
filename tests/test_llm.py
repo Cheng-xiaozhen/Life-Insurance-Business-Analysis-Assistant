@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from life_insurance_business_analysis_assistant.agent.llm import get_llm
 from life_insurance_business_analysis_assistant.data_query import DataQueryResult
-from life_insurance_business_analysis_assistant.agent.nodes.recommend_charts import ChartDecision
+from life_insurance_business_analysis_assistant.agent.shared.charts import ChartDecision
 from life_insurance_business_analysis_assistant.prompt_loader import load_prompt
 
 

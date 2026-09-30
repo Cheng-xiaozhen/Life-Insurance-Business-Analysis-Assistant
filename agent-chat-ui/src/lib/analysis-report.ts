@@ -3,6 +3,9 @@ import { z } from "zod";
 import { getContentString } from "@/components/thread/utils";
 
 export const completeReportSchema = z.object({
+  report_id: z.string().optional(),
+  status: z.enum(["generating", "complete"]).default("complete"),
+  revision: z.number().int().nonnegative().default(0),
   title: z.string(),
   markdown: z.string().min(1),
   sections: z.array(
@@ -10,6 +13,17 @@ export const completeReportSchema = z.object({
       section_id: z.string(),
       markdown: z.string(),
       charts: z.array(z.unknown()),
+      heading: z.string().optional(),
+      table_markdown: z.string().optional(),
+      blocks: z
+        .array(
+          z.object({
+            step_id: z.number().int(),
+            text: z.string(),
+            status: z.enum(["pending", "generating", "complete", "error"]),
+          }),
+        )
+        .optional(),
     }),
   ),
 });
@@ -22,6 +36,7 @@ export function getAnalysisReport(messages: Message[], analysisId: string) {
   const parsed = completeReportSchema.safeParse(
     complete?.additional_kwargs?.report,
   );
+  if (parsed.success && parsed.data.status !== "complete") return null;
   if (parsed.success && complete?.additional_kwargs?.pending !== true) {
     const question = messages.find(
       (message) => message.type === "human" && message.id === analysisId,

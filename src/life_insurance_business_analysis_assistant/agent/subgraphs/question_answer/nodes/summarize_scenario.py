@@ -2,12 +2,10 @@
 
 import json
 from typing import TypedDict
-
 from langchain_core.runnables import RunnableConfig
-
 from life_insurance_business_analysis_assistant.agent.llm import get_llm
-from life_insurance_business_analysis_assistant.agent.chat import chat_message, stream_text
-from life_insurance_business_analysis_assistant.agent.state import AgentState
+from life_insurance_business_analysis_assistant.agent.shared.messages import chat_message, stream_text
+from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.state import AgentState
 from life_insurance_business_analysis_assistant.prompt_loader import load_prompt
 
 

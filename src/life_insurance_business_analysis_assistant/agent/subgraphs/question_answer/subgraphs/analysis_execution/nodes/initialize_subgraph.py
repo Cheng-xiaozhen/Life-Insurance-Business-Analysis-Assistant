@@ -1,5 +1,6 @@
 """初始化分析执行状态。"""
-from life_insurance_business_analysis_assistant.agent.subgraphs.analysis_execution.state import AnalysisExecutionInput
+
+from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.subgraphs.analysis_execution.state import AnalysisExecutionInput
 
 
 def initialize_subgraph(state: AnalysisExecutionInput) -> dict:

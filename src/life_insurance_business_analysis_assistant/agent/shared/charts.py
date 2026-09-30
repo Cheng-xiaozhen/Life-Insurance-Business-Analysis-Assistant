@@ -1,22 +1,12 @@
-"""
-基于已经完成的步骤结论和这些步骤实际使用的数据，判断是否值得推荐图表；
-如果推荐，决定图表类型、维度、指标和来源数据集；
-随后由代码校验并组装真正可供前端渲染的数据。
-LLM 负责语义判断，代码负责事实和数据约束。
-"""
-
+from life_insurance_business_analysis_assistant.agent.shared.contracts import BusinessState
 import json
 from datetime import date
 from typing import Literal
-
 from langchain_core.runnables import RunnableConfig
 from langchain_core.runnables.config import merge_configs
 from langgraph.constants import TAG_NOSTREAM
 from pydantic import BaseModel, ConfigDict, Field
-
 from life_insurance_business_analysis_assistant.agent.llm import get_llm
-from life_insurance_business_analysis_assistant.agent.chat import AnalysisStream, chat_message
-from life_insurance_business_analysis_assistant.agent.state import AgentState
 from life_insurance_business_analysis_assistant.data_query import DatasetPayload, canonical, numeric
 from life_insurance_business_analysis_assistant.prompt_loader import load_prompt
 
@@ -41,7 +31,7 @@ class ChartDecisions(BaseModel):
     recommendations: list[ChartDecision] = Field(min_length=1,description="图表推荐决策列表")
 
 
-def chart_candidates(state: AgentState) -> list[dict]:
+def chart_candidates(state: BusinessState) -> list[dict]:
     """
     把analysis_result中被分析步骤使用过的数据，整理成一组可供LLM选择的图表候选数据
     """
@@ -131,10 +121,10 @@ def assemble_chart(decision: ChartDecision, candidate: dict | None) -> dict:
     return result
 
 
-def recommend_charts(state: AgentState, config: RunnableConfig) -> dict:
+def generate_chart_recommendations(state: BusinessState, config: RunnableConfig, progress=None) -> dict:
     template = state["template"]
     is_report = template is not None and "report_id" in template
-    if template is None or (not is_report and not state["summary"]) or state["clarification"] or state["analysis_result"] is None:
+    if template is None or (not is_report and not state.get("summary")) or state.get("clarification") or state["analysis_result"] is None:
         raise ValueError("图表推荐需要完整的步骤结果和场景总结")
     if [r["step_id"] for r in state["analysis_result"]["step_results"]] != [s["step_id"] for s in template["steps"]]:
         raise ValueError("图表推荐的步骤结果缺失或顺序错误")
@@ -161,7 +151,6 @@ def recommend_charts(state: AgentState, config: RunnableConfig) -> dict:
     if llm is None:
         raise RuntimeError("图表推荐模型未配置，请设置 DEEPSEEK_API_KEY")
     
-    progress = AnalysisStream(state, "charts", "图表推荐", protocol=False) if state.get("analysis_id") else None # 只在Chat模式下使用
     try:
         raw = llm.with_structured_output(ChartDecisions, method="json_mode").invoke(
             [
@@ -179,7 +168,7 @@ def recommend_charts(state: AgentState, config: RunnableConfig) -> dict:
                     {
                         ("reportInfo" if is_report else "scenarioInfo"): {key: template[key] for key in (
                                       ("report_id" if is_report else "scenario_id"), "name", "channel_type", "time_dimension", "analysis_object", "analysis_purpose")},
-                        "summary": state["summary"],
+                        "summary": state.get("summary"),
                         "step_results": state["analysis_result"]["step_results"],
                         "writing_style": template.get("writing_style", {}),
                         "candidates": candidates
@@ -214,16 +203,4 @@ def recommend_charts(state: AgentState, config: RunnableConfig) -> dict:
             raise ValueError("图表推荐重复")
         seen.add(identity)
         recommendations.append(assemble_chart(decision, candidate))
-    update = {"chart_recommendations": recommendations}
-    
-    if progress:
-        update.update(
-            messages=[
-                chat_message(
-                    state,
-                    "charts", "### 图表推荐\n\n",
-                    reasoning="".join(progress.reasoning)
-                    )
-                ]
-            )
-    return update
+    return {"chart_recommendations": recommendations}

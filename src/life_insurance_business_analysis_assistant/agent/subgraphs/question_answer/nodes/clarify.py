@@ -1,11 +1,9 @@
 """暂停工作流"""
 
 from typing import TypedDict
-
 from langgraph.types import interrupt
 from langchain_core.messages import HumanMessage
-
-from life_insurance_business_analysis_assistant.agent.state import AgentState
+from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.state import AgentState
 
 
 class ClarifyUpdate(TypedDict):

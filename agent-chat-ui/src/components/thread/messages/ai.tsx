@@ -196,7 +196,45 @@ export function AssistantMessage({
                 <h1 className="text-2xl font-semibold">{report.data.title}</h1>
                 {report.data.sections.map((section) => (
                   <section key={section.section_id}>
-                    <MarkdownText>{section.markdown}</MarkdownText>
+                    {section.blocks && section.heading ? (
+                      <>
+                        <MarkdownText>{section.heading}</MarkdownText>
+                        {section.blocks.length > 0 &&
+                          section.blocks.every(
+                            (block) => block.status === "pending",
+                          ) && (
+                            <p className="text-muted-foreground text-sm">
+                              待生成
+                            </p>
+                          )}
+                        {section.blocks.map((block) => (
+                          <div key={block.step_id}>
+                            {block.text && (
+                              <MarkdownText>{block.text}</MarkdownText>
+                            )}
+                            {block.status === "generating" &&
+                              isLoading &&
+                              !block.text && (
+                                <p className="text-muted-foreground text-sm">
+                                  正在生成…
+                                </p>
+                              )}
+                            {(block.status === "error" ||
+                              (block.status === "generating" &&
+                                !isLoading)) && (
+                              <p className="text-destructive text-sm">
+                                此段尚未完成，可从失败步骤继续。
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                        {section.table_markdown && (
+                          <MarkdownText>{section.table_markdown}</MarkdownText>
+                        )}
+                      </>
+                    ) : (
+                      <MarkdownText>{section.markdown}</MarkdownText>
+                    )}
                     <AnalysisCharts value={section.charts} />
                   </section>
                 ))}

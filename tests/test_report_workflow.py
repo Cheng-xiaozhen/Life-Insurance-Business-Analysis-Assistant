@@ -5,13 +5,15 @@ from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
+from unittest.mock import patch
 
 import yaml
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.runtime import Runtime
 
 from life_insurance_business_analysis_assistant.agent.graph import build_chat_graph
-from life_insurance_business_analysis_assistant.agent.nodes.report import load_report_template, display_value
+from life_insurance_business_analysis_assistant.agent.subgraphs.report_generation.nodes.load_report_template import load_report_template
+from life_insurance_business_analysis_assistant.agent.subgraphs.report_generation.rendering import display_value
 from life_insurance_business_analysis_assistant.data_query import DataQueryError
 from workflow_support import context, models, patched_models, payload, query_fixture
 
@@ -29,7 +31,22 @@ def test_report():
     config = {"configurable": {"thread_id": "report"}}
     question = "生成一份月度经营分析报告"  # 无年月和范围，仍应直接执行。
     with patched_models(mock):
-        result = graph.invoke({"question": question, "report_template_id": CODE}, config)
+        events = list(graph.stream({"question": question, "report_template_id": CODE}, config,
+                                   context={}, stream_mode=["values", "custom"], subgraphs=True))
+        result = graph.get_state(config).values
+        names = {name for name, _ in graph.get_subgraphs()}
+        assert names == {"question_answer", "report_generation"}
+        custom = [data for _, kind, data in events if kind == "custom"]
+        snapshots = [e["report"] for e in custom if e.get("type") == "report_snapshot"]
+        assert len(snapshots) == 11  # 章节初始化 + 8 次提交 + 图表 + 完成。
+        assert snapshots[0]["status"] == "generating" and snapshots[0]["revision"] == 0
+        assert all(not block["text"] for section in snapshots[0]["sections"] for block in section["blocks"])
+        assert custom.index(next(e for e in custom if e["type"] == "report_snapshot")) < custom.index(next(e for e in custom if e["type"] == "report_step"))
+        assert not any(e.get("type") == "analysis_delta" for e in custom)
+        assert [s["section_id"] for s in snapshots[0]["sections"]] == [s["section_id"] for s in snapshots[-1]["sections"]]
+        assert all(block["status"] == "complete" for section in snapshots[-1]["sections"] for block in section["blocks"])
+        assert len([m for m in result["messages"] if m.id.endswith(":report")]) == 1
+        assert not any(":step:" in m.id or m.id.endswith(":charts") for m in result["messages"])
         assert result["status"] == "已完成" and "__interrupt__" not in result
         assert ctx.query_data.call_count == 7
         assert mock["analyze_step"].stream_events.call_count == 8
@@ -51,7 +68,7 @@ def test_report():
         assert report["chart_recommendations"][0]["section_id"] == "2.1"
         assert any(m.id.endswith(":report") for m in result["messages"])
         # 同线程显式取消模板，回到智能问答且清空报告产物。
-        result = graph.invoke({"question": "标保", "report_template_id": None}, config)
+        result = graph.invoke({"question": "标保", "report_template_id": None}, config, context={})
         assert "__interrupt__" in result and result["report_result"] is None
         assert result["report_id"] is None
     print("report routing, context, template summary, assembly, chat reset: PASS")
@@ -96,6 +113,11 @@ def test_template_and_resume():
             with TestCase().assertRaises(DataQueryError):
                 graph.invoke({"question": "月报", "report_template_id": CODE}, config)
             assert graph.get_state(config).values.get("report_result") is None
+            child = graph.get_state(config, subgraphs=True).tasks[0].state
+            assert child.values["step_index"] == 2
+            assert child.values["report_result"]["revision"] == 2
+            assert child.values["report_result"]["sections"][0]["blocks"][0]["status"] == "complete"
+            assert child.values["report_result"]["status"] == "generating"
             # 模板文件在失败期间改变，不影响已加载快照。
             file.write_text("invalid", encoding="utf-8")
             result = graph.invoke(None, config)
@@ -110,6 +132,33 @@ def test_template_and_resume():
     print("template validation, no extra summary, frozen snapshot and retry: PASS")
 
 
+def test_commit_retry():
+    from life_insurance_business_analysis_assistant.agent.subgraphs.report_generation.presentation import publish_report
+    ctx, mock = replace(context(), report_template_path=REPORTS), models()
+    graph = build_chat_graph(studio_context=ctx).builder.compile(checkpointer=InMemorySaver())
+    config = {"configurable": {"thread_id": "commit-retry"}}
+    fail = True
+
+    def publish(state, **kwargs):
+        nonlocal fail
+        if len(state["step_results"]) == 1 and fail:
+            fail = False
+            raise RuntimeError("模拟章节提交故障")
+        return publish_report(state, **kwargs)
+
+    with patched_models(mock), patch("life_insurance_business_analysis_assistant.agent.subgraphs.report_generation.nodes.commit_report_step.publish_report", side_effect=publish):
+        with TestCase().assertRaises(RuntimeError):
+            graph.invoke({"question": "月报", "report_template_id": CODE}, config)
+        child = graph.get_state(config, subgraphs=True).tasks[0].state
+        assert child.next == ("commit_report_step",)
+        assert child.values["pending_result"]["step_id"] == 1
+        result = graph.invoke(None, config)
+        assert ctx.query_data.call_count == 7 and mock["analyze_step"].stream_events.call_count == 8
+        assert result["report_result"]["status"] == "complete"
+    print("commit failure resumes without rerunning model or query: PASS")
+
+
 if __name__ == "__main__":
     test_report()
     test_template_and_resume()
+    test_commit_retry()
