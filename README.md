@@ -4,7 +4,7 @@
 
 ```powershell
 uv sync
-uv run langgraph dev --port 5518 --no-reload
+uv run langgraph dev --port 2025 --no-reload
 ```
 
 
