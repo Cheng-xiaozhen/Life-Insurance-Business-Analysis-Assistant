@@ -4,12 +4,12 @@ from life_insurance_business_analysis_assistant.agent.shared.contracts import Sc
 import logging
 from langgraph.runtime import Runtime
 from life_insurance_business_analysis_assistant.agent.context import AgentContext
-from life_insurance_business_analysis_assistant.data_query import DataQueryError, DataQueryRequest, validate_result
+from life_insurance_business_analysis_assistant.data_service.data_query import DataQueryError, DataQueryRequest, validate_result
 import json
 from langchain_core.runnables import RunnableConfig
 from life_insurance_business_analysis_assistant.agent.llm import get_llm
 from life_insurance_business_analysis_assistant.agent.shared.messages import stream_text
-from life_insurance_business_analysis_assistant.prompt_loader import load_prompt
+from life_insurance_business_analysis_assistant.prompts.prompt_loader import load_prompt
 
 
 def get_current_step(state: dict) -> ScenarioStep:
@@ -107,6 +107,38 @@ def query_step_data(state: dict, runtime: Runtime[AgentContext]) -> dict:
     return {"datasets": {**state["datasets"], **records}}
 
 
+def source_results(step: ScenarioStep, previous: list[StepResult]) -> list[StepResult]:
+    """综合步骤的显式范围只允许指向已完成步骤。"""
+    allowed = step.get("source_step_ids", [r["step_id"] for r in previous])
+    if not set(allowed) <= {r["step_id"] for r in previous}:
+        raise ValueError("总结引用了尚未完成的步骤")
+    return [r for r in previous if r["step_id"] in allowed]
+
+
+def validate_references(steps: list[ScenarioStep], results: list[StepResult], datasets: dict) -> None:
+    """校验已完成前缀中的引用，综合步骤不能绕过证据范围。"""
+    if [r["step_id"] for r in results] != [s["step_id"] for s in steps[:len(results)]]:
+        raise ValueError("步骤结果缺失、重复或顺序不匹配")
+    for index, result in enumerate(results):
+        step = steps[index]
+        if not isinstance(result["conclusion"], str) or not result["conclusion"].strip():
+            raise ValueError("步骤结论必须是非空文本")
+        ids = result["dataset_ids"]
+        if len(ids) != len(set(ids)):
+            raise ValueError("步骤数据引用重复")
+        allowed = None if step["metrics"] else {
+            key for previous in source_results(step, results[:index]) for key in previous["dataset_ids"]
+        }
+        for key in ids:
+            record = datasets.get(key)
+            if record is None:
+                raise ValueError("步骤引用的数据集不存在或来源步骤不匹配")
+            if allowed is None and record["step_id"] != step["step_id"]:
+                raise ValueError("步骤引用的数据集不存在或来源步骤不匹配")
+            if allowed is not None and key not in allowed:
+                raise ValueError("步骤引用的数据集不存在或来源步骤不匹配")
+
+
 def generate_step_result(state: dict, config: RunnableConfig, stream=stream_text) -> StepResult:
     """
     根据当前分析步骤，读取该步骤允许使用的证据，调用分析 LLM 生成结论；
@@ -119,6 +151,7 @@ def generate_step_result(state: dict, config: RunnableConfig, stream=stream_text
         # 检查前序步骤结果是否完整、顺序正确
         raise ValueError("前序步骤结果缺失、重复或顺序错误") 
     
+    validate_references(template["steps"], state["step_results"], state["datasets"])
     dataset_ids, datasets, conclusions = [], [], []
     if step["metrics"]: # 有指标步骤
         dataset_ids, datasets = saved_step_data(state, build_request(state))
@@ -127,12 +160,19 @@ def generate_step_result(state: dict, config: RunnableConfig, stream=stream_text
     else: # 当前步骤无关联指标
         if any(record["step_id"] == step["step_id"] for record in state["datasets"].values()):
             raise ValueError("无指标步骤不能关联旧查询数据") # 如果这个步骤声明没有指标，但却有旧数据集关联，说明数据不一致
-        conclusions = [{"step_id": r["step_id"], "conclusion": r["conclusion"]} for r in state["step_results"]] # 把之前完成步骤的结论拿出来，基于已有原子结论进行二次综合
-        if "source_step_ids" in step:
-            allowed = step["source_step_ids"]
-            if not set(allowed) <= {r["step_id"] for r in conclusions}:
-                raise ValueError("总结引用了尚未完成的步骤")
-            conclusions = [r for r in conclusions if r["step_id"] in allowed]
+        sources = source_results(step, state["step_results"])
+        conclusions = [{"step_id": r["step_id"], "conclusion": r["conclusion"]} for r in sources]
+        dataset_ids = list(dict.fromkeys(key for r in sources for key in r["dataset_ids"]))
+        # 用原取数步骤重验请求和整批数据；引用不复制或改写来源记录。
+        owners = {state["datasets"][key]["step_id"] for key in dataset_ids}
+        validated = {}
+        for source in template["steps"][:index]:
+            if source["step_id"] in owners:
+                ids, tables = saved_step_data(state, build_request({**state, "current_step": source}))
+                validated.update(zip(ids, tables))
+        datasets = [validated[key] for key in dataset_ids]
+        logger.info("综合步骤证据已选择 step_id=%s source_step_ids=%s dataset_ids=%s",
+                    step["step_id"], [r["step_id"] for r in sources], dataset_ids)
     
     llm = get_llm(thinking=True)
 
@@ -202,14 +242,7 @@ def finalize_execution(state: dict) -> dict:
     # 是不是每一个步骤都有一个结果
     if [r["step_id"] for r in results] != [s["step_id"] for s in steps]:
         raise ValueError("步骤结果缺失、重复或顺序不匹配")
-    # 校验每个步骤的结果是否有效
-    for result in results:
-        if not isinstance(result["conclusion"], str) or not result["conclusion"].strip():
-            raise ValueError("步骤结论必须是非空文本")
-        for dataset_id in result["dataset_ids"]:
-            record = state["datasets"].get(dataset_id)
-            if record is None or record["step_id"] != result["step_id"]:
-                raise ValueError("步骤引用的数据集不存在或来源步骤不匹配")
+    validate_references(steps, results, state["datasets"])
     return {
         "analysis_result":{
             "datasets": state["datasets"],

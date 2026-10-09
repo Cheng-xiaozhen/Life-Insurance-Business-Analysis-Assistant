@@ -23,7 +23,7 @@ from life_insurance_business_analysis_assistant.agent.llm import get_llm
 from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.nodes.load_template import load_template
 from life_insurance_business_analysis_assistant.agent.shared.charts import ChartDecisions
 from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.state import create_initial_state
-from life_insurance_business_analysis_assistant.prompt_loader import load_prompt
+from life_insurance_business_analysis_assistant.prompts.prompt_loader import load_prompt
 
 ROOT = Path(__file__).resolve().parents[1]
 NODES = ("analyze_step", "summarize_scenario", "recommend_charts")

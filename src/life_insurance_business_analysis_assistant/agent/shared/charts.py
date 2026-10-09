@@ -1,4 +1,5 @@
 from life_insurance_business_analysis_assistant.agent.shared.contracts import BusinessState
+from life_insurance_business_analysis_assistant.agent.shared.execution import validate_references
 import json
 from datetime import date
 from typing import Literal
@@ -7,8 +8,8 @@ from langchain_core.runnables.config import merge_configs
 from langgraph.constants import TAG_NOSTREAM
 from pydantic import BaseModel, ConfigDict, Field
 from life_insurance_business_analysis_assistant.agent.llm import get_llm
-from life_insurance_business_analysis_assistant.data_query import DatasetPayload, canonical, numeric
-from life_insurance_business_analysis_assistant.prompt_loader import load_prompt
+from life_insurance_business_analysis_assistant.data_service.data_query import DatasetPayload, canonical, numeric
+from life_insurance_business_analysis_assistant.prompts.prompt_loader import load_prompt
 
 
 class ChartDecision(BaseModel):
@@ -37,6 +38,8 @@ def chart_candidates(state: BusinessState) -> list[dict]:
     """
     candidates, seen = [], set()
     steps = {step["step_id"]: step for step in state["template"]["steps"]}
+    validate_references(state["template"]["steps"], state["analysis_result"]["step_results"],
+                        state["analysis_result"]["datasets"])
     for result in state["analysis_result"]["step_results"]:
         for dataset_id in result["dataset_ids"]:
             if dataset_id in seen:

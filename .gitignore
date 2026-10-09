@@ -38,4 +38,5 @@ tests/*
 !tests/test_data_query.py
 !tests/test_analysis_execution.py
 !tests/test_report_workflow.py
+!tests/test_prior_data.py
 notebooks/

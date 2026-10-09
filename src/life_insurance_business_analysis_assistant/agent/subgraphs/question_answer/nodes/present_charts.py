@@ -15,8 +15,6 @@ def present_charts(state: QuestionAnswerState):
             text += f"\n\n图表类型：{decision['chart_type']}；维度：{'、'.join(decision['dimensions'])}；指标：{'、'.join(decision['metrics'])}。"
         sections.append(text)
     text = "### 图表推荐\n\n" + "\n\n".join(sections)
-    previous = next((m for m in reversed(state.get("messages", [])) if m.id == f"{state['analysis_id']}:charts"), None)
-    reasoning = previous.additional_kwargs.get("reasoning", "") if previous else ""
     get_stream_writer()({"type": "analysis_delta", "id": f"{state['analysis_id']}:charts",
-                         "analysis_id": state["analysis_id"], "start": True, "text": text, "reasoning": reasoning, "status": "已完成"})
-    return {"messages": [chat_message(state, "charts", text, reasoning=reasoning, charts=decisions)], "status": "已完成"}
+                         "analysis_id": state["analysis_id"], "start": True, "text": text, "status": "已完成"})
+    return {"messages": [chat_message(state, "charts", text, charts=decisions)], "status": "已完成"}

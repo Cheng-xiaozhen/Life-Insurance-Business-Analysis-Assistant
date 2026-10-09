@@ -538,7 +538,6 @@ export function Thread() {
                               entries={execution.filter(
                                 (entry) => entry.analysis_id === message.id,
                               )}
-                              messages={messages}
                               actions={
                                 message.id === stream.values.analysis_id
                                   ? recoveryControls

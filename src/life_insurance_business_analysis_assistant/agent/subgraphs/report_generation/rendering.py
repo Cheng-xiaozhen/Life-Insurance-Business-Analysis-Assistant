@@ -1,6 +1,7 @@
 from copy import deepcopy
 from decimal import Decimal, ROUND_HALF_UP
 import re
+from life_insurance_business_analysis_assistant.agent.shared.execution import validate_references
 
 
 def display_value(value, unit, rules):
@@ -47,6 +48,7 @@ def build_report(state, *, complete=False, charts_ready=False):
     expected = steps if complete else steps[:len(outcomes)]
     if [s["step_id"] for s in expected] != [r["step_id"] for r in outcomes]:
         raise ValueError("报告步骤结果缺失或顺序错误")
+    validate_references(steps, outcomes, result["datasets"])
     sections = deepcopy(state["report_sections"])
     section_ids = {s["section_id"] for s in sections}
     if len(section_ids) != len(sections) or any(s["section_id"] not in section_ids for s in steps):
@@ -75,10 +77,6 @@ def build_report(state, *, complete=False, charts_ready=False):
         pairs = [(step, outcome) for step, outcome in zip(steps, outcomes)
                  if step["section_id"] == section["section_id"]]
         ids = list(dict.fromkeys(d for _, outcome in pairs for d in outcome["dataset_ids"]))
-        for step, outcome in pairs:
-            for dataset_id in outcome["dataset_ids"]:
-                if result["datasets"].get(dataset_id, {}).get("step_id") != step["step_id"]:
-                    raise ValueError("报告引用的数据来源不一致")
         by_step = {outcome["step_id"]: outcome for _, outcome in pairs}
         blocks = [{"step_id": step["step_id"], "text": by_step[step["step_id"]]["conclusion"] if step["step_id"] in by_step else "",
                    "status": "complete" if step["step_id"] in by_step else "pending"}

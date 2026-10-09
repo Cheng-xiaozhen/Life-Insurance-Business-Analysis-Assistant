@@ -4,7 +4,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from life_insurance_business_analysis_assistant.prompt_loader import load_prompt
+from life_insurance_business_analysis_assistant.prompts.prompt_loader import load_prompt
 
 
 def test_prompt_loader():
@@ -18,10 +18,9 @@ def test_prompt_loader():
         else:
             raise AssertionError(f"非法名称未被拒绝: {name}")
     with TemporaryDirectory() as directory, patch(
-        "life_insurance_business_analysis_assistant.prompt_loader.files", return_value=Path(directory)
+        "life_insurance_business_analysis_assistant.prompts.prompt_loader.files", return_value=Path(directory)
     ):
-        path = Path(directory) / "prompts" / "sample.md"
-        path.parent.mkdir()
+        path = Path(directory) / "sample.md"
         for content in ('中文 {{参数名}} {"value": 1}\n', '修改后的 Prompt\n'):
             path.write_text(content, encoding="utf-8")
             assert load_prompt("sample") == content

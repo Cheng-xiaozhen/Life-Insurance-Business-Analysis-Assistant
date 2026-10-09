@@ -7,7 +7,7 @@ from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.
 from life_insurance_business_analysis_assistant.agent.shared.execution import build_request
 from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.nodes.load_template import load_template
 from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.state import create_initial_state
-from life_insurance_business_analysis_assistant.data_query import DataQueryError
+from life_insurance_business_analysis_assistant.data_service.data_query import DataQueryError
 from workflow_support import context
 
 

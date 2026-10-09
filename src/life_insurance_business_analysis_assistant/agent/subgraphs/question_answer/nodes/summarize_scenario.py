@@ -4,9 +4,10 @@ import json
 from typing import TypedDict
 from langchain_core.runnables import RunnableConfig
 from life_insurance_business_analysis_assistant.agent.llm import get_llm
+from life_insurance_business_analysis_assistant.agent.shared.execution import validate_references
 from life_insurance_business_analysis_assistant.agent.shared.messages import chat_message, stream_text
 from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.state import AgentState
-from life_insurance_business_analysis_assistant.prompt_loader import load_prompt
+from life_insurance_business_analysis_assistant.prompts.prompt_loader import load_prompt
 
 
 class SummarizeScenarioUpdate(TypedDict):
@@ -33,12 +34,11 @@ def summarize_scenario(state: AgentState, config: RunnableConfig) -> SummarizeSc
     if any(not isinstance(r["conclusion"], str) or not r["conclusion"].strip() for r in results):
         raise ValueError("步骤结论必须是非空文本")
     
+    validate_references(steps, results, analysis["datasets"])
     datasets = {}
     for result in results:
         for dataset_id in result["dataset_ids"]:
             record = analysis["datasets"].get(dataset_id)
-            if record is None or record["step_id"] != result["step_id"]:
-                raise ValueError("总结引用的数据集不存在或来源步骤不匹配")
             datasets[dataset_id] = record["payload"]
     
     payload = {
@@ -73,7 +73,6 @@ def summarize_scenario(state: AgentState, config: RunnableConfig) -> SummarizeSc
                     state,
                     "summary",
                     f"### 场景总结\n\n{summary}",
-                    reasoning=message.additional_kwargs.get("analysis_reasoning", "")
                         )
                     ],
             status="正在生成图表推荐")

@@ -2,7 +2,7 @@ from pathlib import Path
 import re
 from langgraph.runtime import Runtime
 from life_insurance_business_analysis_assistant.agent.context import AgentContext
-from life_insurance_business_analysis_assistant.report_store import read_report
+from life_insurance_business_analysis_assistant.templates.report_store import read_report
 
 
 def load_report_template(state, runtime: Runtime[AgentContext]):

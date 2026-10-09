@@ -8,7 +8,7 @@ from tempfile import TemporaryDirectory
 from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 from omegaconf import OmegaConf
-from life_insurance_business_analysis_assistant.scenario_store import read_scenarios
+from life_insurance_business_analysis_assistant.templates.scenario_store import read_scenarios
 
 from life_insurance_business_analysis_assistant.agent.context import AgentContext, load_scenario_catalog
 from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.nodes.load_template import load_template

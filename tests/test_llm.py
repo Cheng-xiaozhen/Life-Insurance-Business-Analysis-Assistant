@@ -5,9 +5,9 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from life_insurance_business_analysis_assistant.agent.llm import get_llm
-from life_insurance_business_analysis_assistant.data_query import DataQueryResult
+from life_insurance_business_analysis_assistant.data_service.data_query import DataQueryResult
 from life_insurance_business_analysis_assistant.agent.shared.charts import ChartDecision
-from life_insurance_business_analysis_assistant.prompt_loader import load_prompt
+from life_insurance_business_analysis_assistant.prompts.prompt_loader import load_prompt
 
 
 def test_llm():
@@ -26,7 +26,7 @@ def test_llm():
                     "role": "assistant", "content": None, "tool_calls": [{"id": "call_mock", "type": "function",
                     "function": {"name": "DataQueryResult", "arguments": json.dumps({"datasets": [{
                         "dimensions": [], "metrics": ["保费"], "rows": [{"保费": 123}],
-                        "units": {"保费": "万元"}, "is_mock": True, "complete": True, "notice": "模拟样例",
+                        "units": {"保费": "万元"}, "complete": True, "notice": "模拟样例",
                     }]})}}],
                 }),
                 (thinking, ChartDecision, "json_mode", {

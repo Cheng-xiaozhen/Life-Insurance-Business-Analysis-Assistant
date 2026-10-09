@@ -5,9 +5,9 @@ from pathlib import Path
 from pydantic.json_schema import SkipJsonSchema
 from typing_extensions import TypedDict
 
-from life_insurance_business_analysis_assistant.scenario_store import read_scenarios
+from life_insurance_business_analysis_assistant.templates.scenario_store import read_scenarios
 
-from life_insurance_business_analysis_assistant.data_query import QueryData
+from life_insurance_business_analysis_assistant.data_service.data_query import QueryData
 
 
 class ScenarioEntry(TypedDict):

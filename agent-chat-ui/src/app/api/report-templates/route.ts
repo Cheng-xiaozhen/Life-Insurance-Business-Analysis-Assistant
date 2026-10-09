@@ -26,7 +26,7 @@ async function run(payload: object) {
           "utf8",
           path.join(
             root,
-            "src/life_insurance_business_analysis_assistant/report_store.py",
+            "src/life_insurance_business_analysis_assistant/templates/report_store.py",
           ),
           directory,
         ],

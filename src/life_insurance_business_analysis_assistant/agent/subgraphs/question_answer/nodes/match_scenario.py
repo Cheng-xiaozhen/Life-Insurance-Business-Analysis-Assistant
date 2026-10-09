@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from life_insurance_business_analysis_assistant.agent.context import AgentContext
 from life_insurance_business_analysis_assistant.agent.llm import get_llm
 from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.state import AgentState, Clarification, ScenarioCandidate
-from life_insurance_business_analysis_assistant.prompt_loader import load_prompt
+from life_insurance_business_analysis_assistant.prompts.prompt_loader import load_prompt
 
 
 class ScenarioMatch(BaseModel):

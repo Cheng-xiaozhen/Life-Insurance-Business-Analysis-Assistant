@@ -54,7 +54,6 @@ type AnalysisDelta = {
   id: string;
   analysis_id?: string;
   text: string;
-  reasoning?: string;
   start?: boolean;
   status?: string;
 };
@@ -186,11 +185,6 @@ const StreamSession = ({
               analysis_id:
                 event.analysis_id ?? previous?.additional_kwargs?.analysis_id,
               pending: true,
-              reasoning:
-                (event.start
-                  ? ""
-                  : ((previous?.additional_kwargs?.reasoning as string) ??
-                    "")) + (event.reasoning ?? ""),
             },
           };
           if (index >= 0) messages[index] = message;

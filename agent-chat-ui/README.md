@@ -2,6 +2,8 @@
 
 Agent Chat UI is a Next.js application which enables chatting with any LangGraph server with a `messages` key through a chat interface.
 
+本项目的执行过程面板仅展示业务操作及状态；`analysis_delta` 只接收正文增量，不保存或展示模型内部推理字段。报告章节通过 `report_step` 和 `report_snapshot` 更新，完整结果替换临时消息。
+
 > [!NOTE]
 > 🎥 Watch the video setup guide [here](https://youtu.be/lInrwVnZ83o).
 

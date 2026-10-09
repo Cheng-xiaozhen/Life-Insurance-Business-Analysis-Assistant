@@ -27,7 +27,7 @@ async function run(payload: object) {
           "utf8",
           path.join(
             root,
-            "src/life_insurance_business_analysis_assistant/scenario_store.py",
+            "src/life_insurance_business_analysis_assistant/templates/scenario_store.py",
           ),
           directory,
         ],

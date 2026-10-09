@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
 from life_insurance_business_analysis_assistant.agent.context import AgentContext, load_scenario_catalog
-from life_insurance_business_analysis_assistant.data_query import DataQueryResult
+from life_insurance_business_analysis_assistant.data_service.data_query import DataQueryResult
 
 TEMPLATE = Path(__file__).resolve().parents[1] / "config/templates/Scenario"
 

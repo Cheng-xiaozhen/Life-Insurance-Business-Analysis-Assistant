@@ -3,10 +3,10 @@
 from langgraph.constants import TAG_NOSTREAM
 from langchain_core.exceptions import OutputParserException
 
-from life_insurance_business_analysis_assistant.data_query import (
+from life_insurance_business_analysis_assistant.data_service.data_query import (
     DataQueryError, DataQueryRequest, DataQueryResult, validate_result,
 )
-from life_insurance_business_analysis_assistant.prompt_loader import load_prompt
+from life_insurance_business_analysis_assistant.prompts.prompt_loader import load_prompt
 
 
 class MockQueryService:

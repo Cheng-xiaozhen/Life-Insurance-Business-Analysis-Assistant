@@ -6,7 +6,6 @@ import {
   LoaderCircle,
   Pause,
 } from "lucide-react";
-import type { Message } from "@langchain/langgraph-sdk";
 
 export type ExecutionEntry = {
   id: string;
@@ -18,13 +17,11 @@ export type ExecutionEntry = {
 
 export function ExecutionPane({
   entries,
-  messages,
   running,
   status,
   actions,
 }: {
   entries: ExecutionEntry[];
-  messages: Message[];
   running: boolean;
   status: string;
   actions?: ReactNode;
@@ -55,7 +52,7 @@ export function ExecutionPane({
             className={`size-4 shrink-0 transition-transform ${open ? "" : "-rotate-90"}`}
           />
         )}
-        <span className="shrink-0 font-medium">思考过程</span>
+        <span className="shrink-0 font-medium">执行过程</span>
         <span
           role="status"
           className="text-muted-foreground truncate"
@@ -70,9 +67,6 @@ export function ExecutionPane({
         >
           <ol className="space-y-4">
             {entries.map((entry, index) => {
-              const reasoning = messages.find(
-                (message) => message.id === entry.message_id,
-              )?.additional_kwargs?.reasoning;
               const active = running && entry.state === "running";
               const waiting =
                 (entry.state === "waiting" && index === entries.length - 1) ||
@@ -111,14 +105,6 @@ export function ExecutionPane({
                         ? "（已暂停）"
                         : ""}
                     </p>
-                    {typeof reasoning === "string" && reasoning && (
-                      <details className="text-muted-foreground mt-2">
-                        <summary className="cursor-pointer">模型思考</summary>
-                        <div className="mt-2 leading-6 whitespace-pre-wrap">
-                          {reasoning}
-                        </div>
-                      </details>
-                    )}
                   </div>
                 </li>
               );

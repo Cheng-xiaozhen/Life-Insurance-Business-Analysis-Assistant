@@ -2,7 +2,7 @@
 
 from typing import Any, TypedDict
 from langgraph.runtime import Runtime
-from life_insurance_business_analysis_assistant.scenario_store import read_scenarios
+from life_insurance_business_analysis_assistant.templates.scenario_store import read_scenarios
 from life_insurance_business_analysis_assistant.agent.context import AgentContext
 from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.state import AgentState
 from life_insurance_business_analysis_assistant.agent.shared.contracts import ScenarioStep, ScenarioTemplate

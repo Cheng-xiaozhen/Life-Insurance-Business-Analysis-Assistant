@@ -14,7 +14,7 @@ from langgraph.runtime import Runtime
 from life_insurance_business_analysis_assistant.agent.graph import build_chat_graph
 from life_insurance_business_analysis_assistant.agent.subgraphs.report_generation.nodes.load_report_template import load_report_template
 from life_insurance_business_analysis_assistant.agent.subgraphs.report_generation.rendering import display_value
-from life_insurance_business_analysis_assistant.data_query import DataQueryError
+from life_insurance_business_analysis_assistant.data_service.data_query import DataQueryError
 from workflow_support import context, models, patched_models, payload, query_fixture
 
 
@@ -58,12 +58,14 @@ def test_report():
         assert requests[0].guidance == [] and requests[1].guidance
         assert requests[1].section_path == ["人力概况", "活动人力"]
         summary = payload(mock["analyze_step"].stream_events.call_args_list[-1].args[0])
-        assert summary["datasets"] == [] and len(summary["conclusions"]) == 7
+        assert len(summary["datasets"]) == 7 and len(summary["conclusions"]) == 7
         assert summary["writing_style"]["单位规则"] and summary["report"]
         report = result["report_result"]
         assert [s["section_id"] for s in report["sections"]] == ["1", "2", "2.1", "2.2", "3"]
         assert report["sections"][1]["body"] == ""
         assert report["sections"][-1]["body"] == "模拟步骤结论-8"
+        assert report["sections"][-1]["dataset_ids"] == list(report["datasets"])
+        assert report["sections"][-1]["table_markdown"]
         assert "# 月度经营分析" in report["markdown"] and "数据说明" in report["markdown"]
         assert report["chart_recommendations"][0]["section_id"] == "2.1"
         assert any(m.id.endswith(":report") for m in result["messages"])

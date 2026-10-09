@@ -7,8 +7,8 @@ from langgraph.runtime import Runtime
 from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.state import create_initial_state
 from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.nodes.load_template import load_template
 from life_insurance_business_analysis_assistant.agent.shared.execution import build_request
-from life_insurance_business_analysis_assistant.data_query import DataQueryRequest, DataQueryError, validate_result
-from life_insurance_business_analysis_assistant.mock_query_service import MockQueryService
+from life_insurance_business_analysis_assistant.data_service.data_query import DataQueryRequest, DataQueryError, validate_result
+from life_insurance_business_analysis_assistant.data_service.mock_query_service import MockQueryService
 from workflow_support import context, query_fixture
 
 

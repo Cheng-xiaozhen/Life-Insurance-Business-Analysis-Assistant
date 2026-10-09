@@ -59,11 +59,12 @@ def test_analysis_execution():
     result = output["analysis_result"]
     assert set(result) == {"datasets", "step_results"}
     assert [r["step_id"] for r in result["step_results"]] == [1, 2, 3]
-    assert result["step_results"][1]["dataset_ids"] == []
+    assert result["step_results"][1]["dataset_ids"] == ["step:1:table:1"]
     assert set(result["datasets"]) == {"step:1:table:1", "step:3:table:1"}
     assert ctx.query_data.call_count == 2
     sent = payload(mock["analyze_step"].stream_events.call_args_list[1].args[0])
-    assert sent["datasets"] == [] and [c["step_id"] for c in sent["conclusions"]] == [1]
+    assert [d["dataset_id"] for d in sent["datasets"]] == ["step:1:table:1"]
+    assert [c["step_id"] for c in sent["conclusions"]] == [1]
     saved = graph.get_state(config).values
     for change in ("index", "missing", "order", "reference", "owner", "empty"):
         invalid = deepcopy(saved)

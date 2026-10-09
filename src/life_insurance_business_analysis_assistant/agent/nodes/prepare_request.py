@@ -5,7 +5,7 @@ from langchain_core.messages import HumanMessage
 from life_insurance_business_analysis_assistant.agent.state import ChatState
 from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.state import create_initial_state
 import re
-from life_insurance_business_analysis_assistant.report_store import Report
+from life_insurance_business_analysis_assistant.templates.report_store import Report
 
 
 def message_text(message: HumanMessage) -> str:

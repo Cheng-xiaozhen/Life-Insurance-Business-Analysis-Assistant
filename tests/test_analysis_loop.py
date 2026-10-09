@@ -6,7 +6,7 @@ from unittest import TestCase
 from langgraph.types import Command
 from langgraph.checkpoint.memory import InMemorySaver
 from omegaconf import OmegaConf
-from life_insurance_business_analysis_assistant.scenario_store import read_scenarios
+from life_insurance_business_analysis_assistant.templates.scenario_store import read_scenarios
 from life_insurance_business_analysis_assistant.agent.graph import build_chat_graph
 from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.graph import build_analysis_graph
 from life_insurance_business_analysis_assistant.agent.subgraphs.question_answer.subgraphs.analysis_execution.graph import route_analysis
@@ -32,9 +32,9 @@ def test_analysis_loop():
                 result = graph.invoke(Command(resume="standard_premium_review"), config, context=ctx)
             assert ctx.query_data.call_count == count
             assert len(result["analysis_result"]["step_results"]) == count + 1
-            assert result["analysis_result"]["step_results"][-1]["dataset_ids"] == []
+            assert result["analysis_result"]["step_results"][-1]["dataset_ids"] == list(result["analysis_result"]["datasets"])
             sent = payload(mock["analyze_step"].stream_events.call_args.args[0])
-            assert len(sent["conclusions"]) == count and sent["datasets"] == []
+            assert len(sent["conclusions"]) == count and len(sent["datasets"]) == count
             assert "slots" not in sent and "question" not in sent
             with TestCase().assertRaises(ValueError):
                 route_analysis({**result, "step_index": count + 2})
@@ -73,7 +73,7 @@ def test_analysis_loop():
             result = graph.invoke(None, config, context=ctx)
             assert result["summary"] and result["chart_recommendations"]
             assert ctx.query_data.call_count == (6 if node == "fetch_step_data" else 5)
-    print("deterministic loops, conclusion-only steps and checkpoint recovery: PASS")
+    print("deterministic loops, prior-data steps and checkpoint recovery: PASS")
 
 if __name__ == "__main__":
     test_analysis_loop()
