@@ -11,7 +11,7 @@ from life_insurance_business_analysis_assistant.data_service.data_query import Q
 
 
 class ScenarioEntry(TypedDict):
-    """匹配所需的场景信息，不包含槽位和分析步骤。"""
+    """匹配所需的场景信息，不包含分析步骤。"""
 
     scenario_id: str  # 唯一场景编码。
     name: str  # 展示名称。

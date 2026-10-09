@@ -93,3 +93,12 @@
 - **文档检查**：`git -c core.safecrlf=false diff --check` 通过；本轮文档本地 Markdown 链接检查通过。
 - **未通过与未验证**：`tests/test_prompt_contracts.py` 在历史 `JSON Schema:` 固定文本断言失败；HEAD 中的图表提示词同样不含该文本，脚本还保留旧查询字段及模板夹具，本轮未扩展重写该评估框架。未调用真实模型、未执行完整浏览器交互，不能据此声称真实模型质量或全量测试通过。
 - **遗留与下一步**：本轮三项交接待办完成；后续可单独对齐旧提示词评估框架，再补真实模型与浏览器端到端验证。保留工作区已有修改和删除，未提交 Git。
+
+## 2026-10-09：完善本地部署与测试 README
+
+- **目标**：让拿到完整源码的人能按文档安装依赖、配置环境并在本地启动和测试。
+- **实际完成**：重写根 README，补充工具版本、克隆与锁文件安装命令、Windows/macOS/Linux 环境文件复制、模型配置、双终端启动、健康与模板接口检查、页面试用、离线回归、前端类型检查和构建命令及常见问题。明确前端示例的 2024 需改为 2025、模拟取数依赖模型、不需要额外 8080 服务，以及模板管理对根目录 Python 环境的依赖。
+- **验证结果**：在根目录执行 `uv run --frozen python -B tests/test_data_query.py`、`tests/test_analysis_execution.py`、`tests/test_report_workflow.py`、`tests/test_prior_data.py`（后 3 项沿用相同命令前缀），均通过；在前端目录执行 `pnpm exec tsc --noEmit` 通过。运行 `uv run --frozen langgraph dev --port 2025 --no-reload --no-browser` 启动成功，2025 被占用后 CLI 自动使用 8552，`/ok` 返回 true，`/assistants/search` 返回 agent。临时服务已停止。
+- **限制**：`uv sync --frozen` 因运行中的 Python 环境锁住 `psutil` 的 `.pyd` 文件而失败；用户确认正在运行测试服务，未再尝试同步依赖，也未停止其服务。未验证全新安装、前端构建、真实模型和完整浏览器流程。类型检查使用本机 pnpm 11.7.0，安装指南按 packageManager 指定 10.5.1。
+- **文档检查**：`git -c core.safecrlf=false diff --check -- README.md docs/PROGRESS.md docs/session-handoff.md` 及上述文档本地链接检查通过。未改变产品行为、架构与业务日志，无需修改对应设计文档。
+- **遗留与下一步**：本轮文档任务完成；提示词契约测试的历史限制仍见交接。工作区原有 `agent/context.py` 修改保留，未提交 Git。
